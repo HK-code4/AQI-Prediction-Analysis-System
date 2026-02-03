@@ -1,8 +1,9 @@
 from pymongo import MongoClient
 
-MONGO_URI = "mongodb+srv://kazmihiba22_db_user:OMKVxwdLjXIHYDyQ@cluster0.a2nawnq.mongodb.net/?appName=Cluster0"
+import os
+mongo_uri = os.getenv("MONGODB_URI")
 
-client = MongoClient(MONGO_URI)
+client = MongoClient(mongo_uri)
 
 db = client["aqi_db"]
 raw_collection = db["raw_data"]
