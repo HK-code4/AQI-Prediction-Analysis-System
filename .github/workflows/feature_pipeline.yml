@@ -26,5 +26,5 @@ jobs:
 
       - name: Run feature pipeline
         env:
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_URI: ${{ secrets.MONGO_URI }}
         run: python feature_pipeline.py
