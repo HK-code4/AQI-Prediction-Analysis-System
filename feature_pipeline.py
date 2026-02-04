@@ -1,5 +1,5 @@
 import pandas as pd
-from main import raw_collection, feature_collection, db, mongo_uri
+from main import raw_collection, feature_collection, db
 
 raw_df = pd.DataFrame(list(raw_collection.find({}, {"_id": 0})))
 raw_df["time"] = pd.to_datetime(raw_df["time"])
@@ -35,4 +35,5 @@ print("✅ Features stored in MongoDB Atlas")
 
 if __name__ == "__main__":
     run_feature_pipeline()
+
 
