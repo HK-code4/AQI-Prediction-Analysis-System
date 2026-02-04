@@ -1,7 +1,7 @@
 from pymongo import MongoClient
 
 import os
-mongo_uri = os.getenv("MONGODB_URI")
+mongo_uri = os.getenv("MONGO_URI")
 
 client = MongoClient(mongo_uri)
 
@@ -10,5 +10,6 @@ raw_collection = db["raw_data"]
 feature_collection = db["features"]
 
 print("✅ Connected to MongoDB Atlas")
+
 
 
