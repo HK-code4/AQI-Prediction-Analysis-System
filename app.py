@@ -80,9 +80,7 @@ if uploaded_shap is not None:
 # =============================
 # DATABASE
 # =============================
-client = MongoClient(
-    "mongodb+srv://kazmihiba22_db_user:OMKVxwdLjXIHYDyQ@cluster0.a2nawnq.mongodb.net/?appName=Cluster0"
-)
+client = MongoClient(MONGO_URI)
 
 db = client["aqi_db"]
 features_col = db["features"]
@@ -273,3 +271,4 @@ with tab4:
     fig3, ax3 = plt.subplots()
     shap.plots.waterfall(future_shap[day_idx][0], show=False)
     st.pyplot(fig3)
+
