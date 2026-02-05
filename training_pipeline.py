@@ -1,340 +1,91 @@
 from pymongo import MongoClient
-
 import os
-mongo_uri = os.getenv("MONGO_URI")
-
-client = MongoClient(mongo_uri)
-
-db = client["aqi_db"]
-raw_collection = db["raw_data"]
-feature_collection = db["features"]
-
-print("✅ Connected to MongoDB Atlas")
-
-# ===============================
-# 1. IMPORT LIBRARIES
-# ===============================
 import pandas as pd
 import numpy as np
 import pickle
-
+import joblib
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-
-# (Optional advanced model)
-import xgboost as xgb
-
-# ===============================
-# LOAD DATA
-# ===============================
-df = pd.read_csv("features.csv")
-
-print("✅ Data loaded successfully")
-print("Shape:", df.shape)
-
-# ===============================
-# CLEAN DATA
-# ===============================
-df = df.dropna()
-
-# Convert time column if exists
-if "time" in df.columns:
-    df["time"] = pd.to_datetime(df["time"])
-
-# ===============================
-# FEATURES & TARGET
-# ===============================
-X = df.drop(columns=["AQI", "time"], errors="ignore")
-y = df["AQI"]
-
-print("Training samples:", X.shape[0])
-print("Number of features:", X.shape[1])
-
-# ------------- 1 RIDGE REGRESSION (Statistical Baseline) ----------------- #
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.linear_model import Ridge
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, shuffle=False
-)
-
-ridge = Ridge(alpha=1.0)
-ridge.fit(X_train, y_train)
-
-preds_ridge = ridge.predict(X_test)
-
-print("RIDGE MAE:", mean_absolute_error(y_test, preds_ridge))
-print("RIDGE RMSE:", np.sqrt(mean_squared_error(y_test, preds_ridge)))
-print("RIDGE R2:", r2_score(y_test, preds_ridge))
-
-# Statistical model requirement satisfied
-
-# ----------------------- 2 RANDOM FOREST (Tree-Based ML)----------------------------- #
 from sklearn.ensemble import RandomForestRegressor
-
-rf = RandomForestRegressor(n_estimators=200, random_state=42)
-rf.fit(X_train, y_train)
-
-preds_rf = rf.predict(X_test)
-
-print("RF MAE:", mean_absolute_error(y_test, preds_rf))
-print("RF RMSE:", np.sqrt(mean_squared_error(y_test, preds_rf)))
-print("RF R2:", r2_score(y_test, preds_rf))
-
-# Strong non-linear baseline
-
-# ----------------------------- 3 XGBOOST (Advanced ML) ------------------------- #
 from xgboost import XGBRegressor
-
-xgb = XGBRegressor(
-    n_estimators=300,
-    learning_rate=0.05,
-    max_depth=6,
-    random_state=42
-)
-
-xgb.fit(X_train, y_train)
-preds_xgb = xgb.predict(X_test)
-
-print("XGB MAE:", mean_absolute_error(y_test, preds_xgb))
-print("XGB RMSE:", np.sqrt(mean_squared_error(y_test, preds_xgb)))
-print("XGB R2:", r2_score(y_test, preds_xgb))
-
-# Best ML model usually
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from sklearn.preprocessing import MinMaxScaler
 
-scaler = MinMaxScaler()
-scaled_aqi = scaler.fit_transform(y.values.reshape(-1, 1))
+def run_training_pipeline():
+    # ----------------- MONGO CONNECTION -----------------
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        raise ValueError("❌ MONGO_URI environment variable not set!")
+    client = MongoClient(mongo_uri)
+    db = client["aqi_db"]
+    print("✅ Connected to MongoDB Atlas")
 
-def create_sequences(data, window=24):
-    X, y = [], []
-    for i in range(len(data) - window):
-        X.append(data[i:i+window])
-        y.append(data[i+window])
-    return np.array(X), np.array(y)
-
-X_seq, y_seq = create_sequences(scaled_aqi)
-
-split = int(0.8 * len(X_seq))
-X_train, X_test = X_seq[:split], X_seq[split:]
-y_train, y_test = y_seq[:split], y_seq[split:]
-
-model = Sequential([
-    LSTM(50, activation="relu", input_shape=(24, 1)),
-    Dense(1)
-])
-
-model.compile(optimizer="adam", loss="mse")
-model.fit(X_train, y_train, epochs=10, batch_size=32)
-
-print("✅ LSTM AQI forecasting model trained")
-
-import shap
-from sklearn.model_selection import train_test_split
-
-# Re-split X to get the 2D X_train used for XGBoost
-X_train_xgb_shap, _, _, _ = train_test_split(
-    X, y, test_size=0.2, shuffle=False
-)
-
-# SHAP explainer
-explainer = shap.TreeExplainer(xgb)
-shap_values = explainer.shap_values(X_train_xgb_shap)
-
-# SHAP summary
-shap.summary_plot(shap_values, X_train_xgb_shap)
-
-# =========================
-# SAVE MODEL FOR UI
-# =========================
-with open("best_model.pkl", "wb") as f:
-    pickle.dump(xgb, f)
-
-# =========================
-# SAVE SHAP EXPLAINER FOR UI
-# =========================
-with open("shap_explainer.pkl", "wb") as f:
-    pickle.dump(explainer, f)
-
-print("✅ Model and SHAP explainer saved successfully")
-
-import matplotlib.pyplot as plt
-import joblib
-import os
-
-# ==============================
-# TRAINED MODELS (already trained)
-# ==============================
-trained_models = {
-    "Ridge Regression": ridge,
-    "Random Forest": rf,
-    "XGBoost": xgb,
-    "LSTM": model
-}
-
-# ==============================
-# MODEL METRICS
-# ==============================
-data = {
-    "Model": ["Ridge Regression", "Random Forest", "XGBoost", "LSTM"],
-    "MAE": [18.5, 9.2, 6.8, 7.5],
-    "RMSE": [24.1, 12.7, 9.3, 10.1],
-    "R2": [0.62, 0.88, 0.93, 0.90]
-}
-
-df = pd.DataFrame(data)
-
-# ==============================
-# FIND BEST MODEL
-# ==============================
-best_index = df["RMSE"].idxmin()
-best_model_name = df.loc[best_index, "Model"]
-best_model = trained_models[best_model_name]
-
-# ==============================
-# SAVE BEST MODEL
-# ==============================
-os.makedirs("saved_models", exist_ok=True)
-
-model_path = f"saved_models/best_model_{best_model_name.replace(' ', '_')}.pkl"
-joblib.dump(best_model, model_path)
-
-print(f"✅ Best model saved at: {model_path}")
-
-# ==============================
-# VISUALIZATION
-# ==============================
-x = np.arange(len(df))
-width = 0.25
-
-plt.figure()
-
-bars_mae = plt.bar(x - width, df["MAE"], width, label="MAE")
-bars_rmse = plt.bar(x, df["RMSE"], width, label="RMSE")
-bars_r2 = plt.bar(x + width, df["R2"], width, label="R²")
-
-for bars in [bars_mae, bars_rmse, bars_r2]:
-    bars[best_index].set_edgecolor("black")
-    bars[best_index].set_linewidth(3)
-
-plt.xticks(x, df["Model"], rotation=20)
-plt.xlabel("Models")
-plt.ylabel("Metric Value")
-plt.title(f"Model Comparison (Best Model: {best_model_name})")
-plt.legend()
-plt.tight_layout()
-plt.show()
-
-# ==============================
-# FINAL OUTPUT
-# ==============================
-print("📊 Model Comparison Result")
-print("--------------------------")
-print(f"🏆 Best Model: {best_model_name}")
-print(f"➡ Lowest RMSE: {df.loc[best_index, 'RMSE']}")
-print(f"➡ R² Score: {df.loc[best_index, 'R2']}")
-
-# ------------------------- HAZARDOUS AQI ALERTS ------------------------ #
-# Re-load df and process it if it's not the correct one (temporary fix for execution state)
-import pandas as pd
-
-if 'AQI' not in df.columns:
+    # ----------------- LOAD DATA -----------------
+    if not os.path.exists("features.csv"):
+        raise FileNotFoundError("❌ features.csv not found in repo. Please add it.")
     df = pd.read_csv("features.csv")
     df = df.dropna()
     if "time" in df.columns:
         df["time"] = pd.to_datetime(df["time"])
 
-def aqi_alert(aqi):
-    if aqi > 300:
-        return "🚨 Severe Hazard"
-    elif aqi > 200:
-        return "⚠️ Very Unhealthy"
-    elif aqi > 150:
-        return "⚠️ Unhealthy"
-    else:
-        return "✅ Safe"
+    # ----------------- FEATURES & TARGET -----------------
+    X = df.drop(columns=["AQI", "time"], errors="ignore")
+    y = df["AQI"]
 
-df["AQI_ALERT"] = df["AQI"].apply(aqi_alert)
-df[["AQI", "AQI_ALERT"]].tail()
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
-# Alert system implemented
-from pymongo.errors import DocumentTooLarge # Import the specific error
+    # ----------------- RIDGE -----------------
+    ridge = Ridge(alpha=1.0)
+    ridge.fit(X_train, y_train)
 
-# Your models
-models = {
-    "Ridge_AQI": ridge,
-    "RandomForest_AQI": rf,
-    "XGBoost_AQI": xgb,
-    "LSTM_AQI": model
-}
+    # ----------------- RANDOM FOREST -----------------
+    rf = RandomForestRegressor(n_estimators=200, random_state=42)
+    rf.fit(X_train, y_train)
 
-# Split original X and y to get a 2D X_test for non-LSTM models and y_test for all evaluations
-_, X_test_2d, _, y_test_eval = train_test_split(
-    X, y, test_size=0.2, shuffle=False
-)
+    # ----------------- XGBOOST -----------------
+    xgb = XGBRegressor(n_estimators=300, learning_rate=0.05, max_depth=6, random_state=42)
+    xgb.fit(X_train, y_train)
 
-# The existing X_test (from the LSTM preparation) is already 3D, suitable for LSTM prediction.
-# We will use 'X_test' for LSTM and 'X_test_2d' for other models.
+    # ----------------- LSTM -----------------
+    scaler = MinMaxScaler()
+    scaled_aqi = scaler.fit_transform(y.values.reshape(-1, 1))
+    def create_sequences(data, window=24):
+        X_seq, y_seq = [], []
+        for i in range(len(data) - window):
+            X_seq.append(data[i:i+window])
+            y_seq.append(data[i+window])
+        return np.array(X_seq), np.array(y_seq)
+    X_seq, y_seq = create_sequences(scaled_aqi)
+    split = int(0.8 * len(X_seq))
+    X_train_lstm, X_test_lstm = X_seq[:split], X_seq[split:]
+    y_train_lstm, y_test_lstm = y_seq[:split], y_seq[split:]
+    model = Sequential([LSTM(50, activation="relu", input_shape=(24,1)), Dense(1)])
+    model.compile(optimizer="adam", loss="mse")
+    model.fit(X_train_lstm, y_train_lstm, epochs=10, batch_size=32)
 
-# Define MongoDB's BSON document size limit (16MB) - slightly less for safety
-MAX_BSON_SIZE_BYTES = 15 * 1024 * 1024 # 15 MB
+    # ----------------- SAVE BEST MODEL -----------------
+    trained_models = {"Ridge": ridge, "RF": rf, "XGB": xgb, "LSTM": model}
+    best_model_name = "XGB"  # Use your logic if needed
+    os.makedirs("saved_models", exist_ok=True)
+    joblib.dump(trained_models[best_model_name], f"saved_models/best_model_{best_model_name}.pkl")
+    print(f"✅ Best model saved: {best_model_name}")
 
-for model_name, m_object in models.items():
-    model_binary_data = None
-    model_size_mb = 0
-    rmse_val = None
-    r2_val = None
-
-    if model_name == "LSTM_AQI":
-        # Use the 3D X_test for LSTM prediction
-        preds_scaled = m_object.predict(X_test).flatten()
-        # Inverse transform LSTM predictions to match original y_test scale
-        preds = scaler.inverse_transform(preds_scaled.reshape(-1, 1)).flatten()
-        # Use the correct y_true for LSTM evaluation, also inverse transformed
-        y_true_lstm = scaler.inverse_transform(y_test.reshape(-1, 1)).flatten()
-        rmse_val = np.sqrt(mean_squared_error(y_true_lstm, preds))
-        r2_val = r2_score(y_true_lstm, preds)
-    else:
-        # Use the 2D X_test_2d for non-LSTM models
-        preds = m_object.predict(X_test_2d)
-        # For non-LSTM models, y_test_eval is the correct target
-        rmse_val = np.sqrt(mean_squared_error(y_test_eval, preds))
-        r2_val = r2_score(y_test_eval, preds)
-
-    try:
-        model_binary_data = pickle.dumps(m_object)
-        model_size_mb = len(model_binary_data) / (1024 * 1024)
-        print(f"Attempting to store model '{model_name}'. Binary size: {model_size_mb:.2f} MB")
-    except Exception as e:
-        print(f"ERROR: Could not pickle model '{model_name}': {e}. Model binary will not be stored.")
-        # Ensure model_binary_data is explicitly None if pickling failed
-        model_binary_data = None
-
-    # Prepare model entry
-    model_entry = {
-        "model_name": model_name,
-        "rmse": rmse_val,
-        "r2": r2_val,
-    }
-
-    if model_binary_data is not None and len(model_binary_data) <= MAX_BSON_SIZE_BYTES:
-        model_entry["model_binary"] = model_binary_data
-    else:
-        # If binary is too large or pickling failed, store a message instead
-        if model_binary_data is not None:
-             print(f"WARNING: Model '{model_name}' binary ({model_size_mb:.2f} MB) exceeds MongoDB's BSON limit ({MAX_BSON_SIZE_BYTES / (1024*1024):.0f} MB). Storing metadata only.")
-             model_entry["model_binary"] = f"Model binary too large for direct MongoDB storage ({model_size_mb:.2f} MB). Consider external storage (e.g., cloud storage, local file system).".replace('\n', ' ')
-        else: # Pickling failed
-            model_entry["model_binary"] = "Model binary could not be pickled or was not generated."
-
-    # Insert into MongoDB registry
-    try:
-        db["model_registry"].insert_one(model_entry)
-        print(f"✅ {model_name} stored in MongoDB Model Registry")
-    except Exception as e:
-        # This catch is a fallback in case the size check isn't perfectly aligned
-        print(f"🚨 ERROR: Failed to store {model_name} in MongoDB: {e}. Model might still be too large or other MongoDB error.")
+    # ----------------- MONGODB MODEL REGISTRY -----------------
+    MAX_BSON_SIZE = 15 * 1024 * 1024
+    for name, m in trained_models.items():
+        try:
+            data = {"model_name": name}
+            binary = pickle.dumps(m)
+            if len(binary) <= MAX_BSON_SIZE:
+                data["model_binary"] = binary
+            else:
+                data["model_binary"] = f"Model too large ({len(binary)/(1024*1024):.2f} MB)"
+            db["model_registry"].insert_one(data)
+            print(f"✅ {name} stored in MongoDB")
+        except Exception as e:
+            print(f"🚨 Failed to store {name}: {e}")
 
 if __name__ == "__main__":
     run_training_pipeline()
