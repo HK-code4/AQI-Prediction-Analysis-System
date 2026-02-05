@@ -16,9 +16,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from sklearn.preprocessing import MinMaxScaler
 
-
 def run_training_pipeline():
-
     # ================= MONGO CONNECTION =================
     mongo_uri = os.getenv("MONGO_URI")
     if not mongo_uri:
@@ -37,24 +35,24 @@ def run_training_pipeline():
     if "time" in df.columns:
         df["time"] = pd.to_datetime(df["time"])
 
-   # ------------------------- SAVE AQI ALERTS TO MONGODB ------------------------ #
-if "AQI_ALERT" not in df.columns:
-    def aqi_alert(aqi):
-        if aqi > 300: return "🚨 Severe Hazard"
-        elif aqi > 200: return "⚠️ Very Unhealthy"
-        elif aqi > 150: return "⚠️ Unhealthy"
-        else: return "✅ Safe"
+    # ================= CREATE AQI ALERTS =================
+    if "AQI_ALERT" not in df.columns:
+        def aqi_alert(aqi):
+            if aqi > 300: return "🚨 Severe Hazard"
+            elif aqi > 200: return "⚠️ Very Unhealthy"
+            elif aqi > 150: return "⚠️ Unhealthy"
+            else: return "✅ Safe"
 
-    df["AQI_ALERT"] = df["AQI"].apply(aqi_alert)
+        df["AQI_ALERT"] = df["AQI"].apply(aqi_alert)
 
-# Save/update alerts in MongoDB
-for _, row in df.iterrows():
-    features_col.update_one(
-        {"time": row["time"]}, 
-        {"$set": {"AQI_ALERT": row["AQI_ALERT"]}},
-        upsert=True
-    )
-print("✅ AQI alerts saved to MongoDB")
+    # ================= SAVE ALERTS TO MONGODB =================
+    for _, row in df.iterrows():
+        features_col.update_one(
+            {"time": row["time"]},
+            {"$set": {"AQI_ALERT": row["AQI_ALERT"]}},
+            upsert=True
+        )
+    print("✅ AQI alerts saved to MongoDB")
 
     # ================= FEATURES & TARGET =================
     X = df.drop(columns=["AQI", "time"], errors="ignore")
@@ -79,14 +77,14 @@ print("✅ AQI alerts saved to MongoDB")
     xgb.fit(X_train, y_train)
     models["XGBoost"] = xgb
 
-    # Create SHAP explainer for XGBoost
+    # ================= CREATE SHAP EXPLAINER =================
     shap_explainer = shap.Explainer(xgb)
     os.makedirs("saved_models", exist_ok=True)
     shap_path = "saved_models/shap_explainer.pkl"
     joblib.dump(shap_explainer, shap_path)
     print(f"✅ SHAP explainer saved: {shap_path}")
 
-    # LSTM
+    # ================= LSTM =================
     scaler = MinMaxScaler()
     scaled_y = scaler.fit_transform(y.values.reshape(-1, 1))
 
@@ -102,7 +100,10 @@ print("✅ AQI alerts saved to MongoDB")
     X_train_lstm, X_test_lstm = X_seq[:split], X_seq[split:]
     y_train_lstm, y_test_lstm = y_seq[:split], y_seq[split:]
 
-    lstm = Sequential([LSTM(50, activation="relu", input_shape=(24, 1)), Dense(1)])
+    lstm = Sequential([
+        LSTM(50, activation="relu", input_shape=(24, 1)),
+        Dense(1)
+    ])
     lstm.compile(optimizer="adam", loss="mse")
     lstm.fit(X_train_lstm, y_train_lstm, epochs=10, batch_size=32, verbose=0)
     models["LSTM"] = lstm
@@ -157,7 +158,6 @@ print("✅ AQI alerts saved to MongoDB")
 
     print("✅ Model registry, SHAP, metrics history updated")
     print(f"✅ Model saved at {model_path}")
-
 
 if __name__ == "__main__":
     run_training_pipeline()
