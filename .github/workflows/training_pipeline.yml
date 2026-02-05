@@ -26,5 +26,5 @@ jobs:
 
       - name: Run training pipeline
         env:
-          MONGODB_URI: ${{ secrets.MONGO_URI }}
+          MONGO_URI: ${{ secrets.MONGO_URI }}
         run: python training_pipeline.py
