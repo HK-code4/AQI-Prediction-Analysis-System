@@ -186,18 +186,60 @@ with tab2:
 # TAB 3 — MODEL COMPARISON
 with tab3:
     st.subheader("🏆 Model Performance")
-    model_metrics = pd.DataFrame({
-        "Model": ["Ridge", "Random Forest", "XGBoost", "LSTM"],
-        "MAE": [18.5, 9.2, 6.8, 7.5],
-        "RMSE": [24.1, 12.7, 9.3, 10.1],
-        "R²": [0.62, 0.88, 0.93, 0.90]
-    })
-    def highlight_xgb(row):
-        if row["Model"] == "XGBoost":
+
+    # Fetch metrics from MongoDB dynamically
+    registry_docs = list(model_registry_col.find({}, {"_id": 0, "model_name": 1, "metrics": 1}))
+    if registry_docs:
+        data = {
+            "Model": [doc["model_name"] for doc in registry_docs],
+            "MAE": [doc["metrics"]["MAE"] for doc in registry_docs],
+            "RMSE": [doc["metrics"]["RMSE"] for doc in registry_docs],
+            "R²": [doc["metrics"]["R2"] for doc in registry_docs]
+        }
+    else:
+        # fallback if MongoDB is empty
+        data = {
+            "Model": ["Ridge", "Random Forest", "XGBoost", "LSTM"],
+            "MAE": [18.5, 9.2, 6.8, 7.5],
+            "RMSE": [24.1, 12.7, 9.3, 10.1],
+            "R²": [0.62, 0.88, 0.93, 0.90]
+        }
+
+    model_metrics = pd.DataFrame(data)
+
+    # Highlight best model (lowest RMSE) in table
+    best_index = model_metrics["RMSE"].idxmin()
+    def highlight_best(row):
+        if row.name == best_index:
             return ["background-color:#16a34a;color:white"] * len(row)
         return [""] * len(row)
-    st.dataframe(model_metrics.style.apply(highlight_xgb, axis=1), use_container_width=True)
-    st.info("✅ XGBoost selected for production due to lowest RMSE and highest R².")
+    st.dataframe(model_metrics.style.apply(highlight_best, axis=1), use_container_width=True)
+
+    st.info(f"✅ Best Model: {model_metrics.loc[best_index, 'Model']} (lowest RMSE)")
+
+    # ============================== VISUALIZATION ==============================
+    st.markdown("### 📊 Model Metrics Visualization")
+    x = np.arange(len(model_metrics))
+    width = 0.25
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+
+    bars_mae = ax.bar(x - width, model_metrics["MAE"], width, label="MAE")
+    bars_rmse = ax.bar(x, model_metrics["RMSE"], width, label="RMSE")
+    bars_r2 = ax.bar(x + width, model_metrics["R²"], width, label="R²")
+
+    # Highlight best model bars
+    for bars in [bars_mae, bars_rmse, bars_r2]:
+        bars[best_index].set_edgecolor("black")
+        bars[best_index].set_linewidth(3)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(model_metrics["Model"], rotation=20)
+    ax.set_ylabel("Metric Value")
+    ax.set_title(f"Model Comparison (Best Model: {model_metrics.loc[best_index, 'Model']})")
+    ax.legend()
+    plt.tight_layout()
+    st.pyplot(fig)
 
 # TAB 4 — SHAP EXPLAINABILITY
 with tab4:
@@ -215,3 +257,4 @@ with tab4:
     fig2, ax2 = plt.subplots()
     shap.plots.waterfall(shap_values[0], show=False)
     st.pyplot(fig2)
+
