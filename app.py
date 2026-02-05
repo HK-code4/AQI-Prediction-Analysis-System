@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.markdown("##    AirSense Karachi – AI-Powered AQI Intelligence")
+st.markdown("## AirSense Karachi – AI-Powered AQI Intelligence")
 st.caption("AI-powered AQI prediction, forecasting & explainability")
 
 # ==============================
@@ -104,7 +104,6 @@ pm25 = st.sidebar.slider(
 # ==============================
 # MODEL INPUT
 # ==============================
-# Define feature order
 try:
     feature_order = model.get_booster().feature_names
 except AttributeError:
@@ -136,10 +135,18 @@ X = X[feature_order]
 # CURRENT AQI
 # ==============================
 current_aqi = float(model.predict(X)[0])
-c1, c2, c3 = st.columns(3)
+
+# ------------------------- FETCH HAZARD ALERT ------------------------- #
+latest_alert = latest.get("AQI_ALERT", aqi_label(current_aqi))
+
+# ==============================
+# METRICS DISPLAY
+# ==============================
+c1, c2, c3, c4 = st.columns(4)
 c1.metric("🌫️ AQI Now", f"{current_aqi:.1f}")
 c2.metric("🌈 Air Status", aqi_label(current_aqi))
 c3.metric("🧠 Model", model_name)
+c4.metric("⚠️ Hazard Status", latest_alert)
 
 # ==============================
 # TABS
@@ -192,12 +199,13 @@ with tab3:
     st.dataframe(model_metrics.style.apply(highlight_xgb, axis=1), use_container_width=True)
     st.info("✅ XGBoost selected for production due to lowest RMSE and highest R².")
 
-# TAB 4 — SHAP
+# TAB 4 — SHAP EXPLAINABILITY
 with tab4:
     st.subheader("🧠 SHAP Explainability")
     if not SHAP_OK:
         st.warning("Upload a SHAP explainer to enable explanations.")
         st.stop()
+    import shap
     st.markdown("**Why SHAP?**\n- Explains why AQI is high or low\n- Builds trust in AI predictions")
     fig, ax = plt.subplots()
     shap.plots.bar(shap_explainer(X), show=False)
