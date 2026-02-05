@@ -51,3 +51,10 @@ jobs:
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
         run: python training_pipeline.py
+        
+      - name: Upload trained model
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-model
+          path: saved_models/
+
