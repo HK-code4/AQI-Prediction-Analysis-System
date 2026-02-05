@@ -55,6 +55,5 @@ jobs:
       - name: Upload trained model
         uses: actions/upload-artifact@v4
         with:
-          name: trained-model
+          name: trained-model-${{ github.run_number }}
           path: saved_models/
-
