@@ -1,42 +1,245 @@
-# AirSense Karachi – AI-Powered AQI Intelligence
+# 🌍 AirSense Karachi – AI-Powered AQI Intelligence
+
+🔗 **Live UI (Streamlit Dashboard):**
+👉 *[http://localhost:8501](http://localhost:8501)*
+
+
 ## 1. Abstract
-AirSense Karachi is an intelligent system designed to predict, forecast, and monitor Air Quality Index (AQI) in Karachi using machine learning and deep learning models. The platform provides real-time hazard alerts, historical trends, 3-day forecasting, and model explainability through SHAP, all integrated into an interactive Streamlit dashboard with MongoDB backend storage.
+
+AirSense Karachi is an intelligent system designed to predict, forecast, and monitor the Air Quality Index (AQI) of Karachi using machine learning and deep learning models. The platform provides real-time hazard alerts, historical AQI trends, 3-day forecasting, and explainable AI insights using SHAP. All components are integrated into an interactive Streamlit dashboard backed by MongoDB Atlas for scalable data storage and model versioning.
 
 ## 2. Motivation
-Air pollution is a major concern in urban areas like Karachi. Real-time AQI monitoring helps:
 
-          Raise awareness about hazardous air conditions.
+Air pollution is a serious environmental and health issue in metropolitan cities like Karachi. Accurate AQI prediction and monitoring helps:
 
-          Allow residents to make informed health decisions.
-
-          Support environmental monitoring and policy-making.
+* Raise public awareness about hazardous air conditions
+* Enable citizens to take preventive health measures
+* Support data-driven environmental planning and policymaking
 
 ## 3. Objectives
 
-Predict current AQI using sensor data and machine learning models.
+* Predict real-time AQI using sensor and environmental data
+* Forecast AQI for the next 3 days
+* Automatically generate AQI hazard alerts
+* Provide explainable AI using SHAP
+* Store models, metrics, and alerts in MongoDB
+* Develop an interactive Streamlit-based dashboard
 
-Forecast next 3-day AQI trends.
+## 4. Technology Stack
 
-Automatically generate hazard alerts based on AQI levels.
+**Data Source**
 
-Provide model explainability with SHAP.
+* Open-Meteo API (Air Quality & Weather)
 
-Store all data, metrics, and models in MongoDB for reproducibility and version control.
+**Programming & Tools**
 
-Develop an interactive Streamlit UI for visualization and real-time interaction.
+* Python
+* VS Code / PyCharm / Google Colab
 
-4. Dataset
+**Machine Learning**
 
-The system uses a features dataset containing:
+* Scikit-learn
+* XGBoost
+* TensorFlow / Keras (LSTM)
 
-Air pollutants: pm2_5, pm10, carbon_monoxide, nitrogen_dioxide, sulphur_dioxide, ozone.
+**Explainability**
 
-Environmental features: temperature_2m, wind_speed_100m.
+* SHAP
 
-Time-related features: hour, day, month, day_of_week.
+**Database**
 
-Target: AQI (Air Quality Index)
+* MongoDB Atlas (Cloud NoSQL)
 
-Derived feature: aqi_change_rate
+**Backend & Pipelines**
 
-Data is stored and maintained in MongoDB, enabling both historical and real-time analysis.
+* Python Feature Pipeline
+* Training Pipeline
+* GitHub Actions (CI/CD)
+
+**Frontend**
+
+* Streamlit
+
+## 5. Dataset
+
+The dataset contains engineered AQI features including:
+
+* **Pollutants:** PM2.5, PM10, CO, NO₂, SO₂, Ozone
+* **Environmental:** Temperature, Wind Speed
+* **Temporal:** Hour, Day, Month, Day of Week
+* **Target:** AQI
+* **Derived Feature:** AQI change rate
+
+All data is stored and updated in MongoDB Atlas for real-time and historical analysis.
+
+## 6. Features
+
+* **Real-time AQI Prediction**
+  Predicts current AQI using machine learning and deep learning models including XGBoost, Random Forest, Ridge Regression, and LSTM.
+* **3-Day AQI Forecast**
+  Forecasts AQI values for the next three days based on the latest environmental data.
+* **Hazard Alerts**
+  Automatically categorizes AQI levels as ✅ Safe, ⚠️ Unhealthy, or 🚨 Severe Hazard. Alerts are stored and retrieved from MongoDB in real time.
+* **Explainable AI (SHAP)**
+  Provides SHAP-based explainability to interpret model predictions and understand the contribution of each feature.
+* **Model Comparison**
+  Compares multiple models (Ridge, Random Forest, XGBoost, LSTM) using MAE, RMSE, and R² metrics with both tabular and visual representation.
+* **Historical AQI Trends**
+  Visualizes past AQI trends reconstructed using the trained model.
+* **MongoDB Integration**
+  Stores features, AQI alerts, trained models, SHAP explainers, and evaluation metrics in MongoDB Atlas.
+* **Interactive Streamlit UI**
+  User-friendly dashboard with sidebar controls for environmental inputs and real-time visualization.
+
+## 7. System Architecture
+
+The AQI Intelligence Platform follows a **three-layer architecture** with an end-to-end automated data flow.
+
+### 🔷 Overall Architecture Diagram (Horizontal)
+
+```
+┌────────────────────┐
+│   Open-Meteo API   │
+│  (Air Quality Data)│
+└─────────┬──────────┘
+          │
+          ▼
+┌────────────────────────┐
+│  Local Environment     │
+│ (VS Code / PyCharm)    │
+│ Feature Pipeline       │
+└─────────┬──────────────┘
+          │
+          ▼
+┌────────────────────────────────────┐
+│        MongoDB Atlas (Cloud)       │
+│ ┌──────────────┐ ┌───────────────┐ │
+│ │ features     │ │ model_registry│ │
+│ │ AQI + ALERT  │ │ model + SHAP  │ │
+│ └──────────────┘ └───────────────┘ │
+│ ┌────────────────────────────────┐ │
+│ │ metrics_history                │ │
+│ │ Model evaluation records       │ │
+│ └────────────────────────────────┘ │
+└─────────┬──────────────────────────┘
+          │
+          ▼
+┌────────────────────────┐
+│  Model Training Layer  │
+│ Ridge | RF | XGB |LSTM │
+│ SHAP + Versioning      │
+└─────────┬──────────────┘
+          │
+          ▼
+┌────────────────────────┐
+│   Streamlit Dashboard  │
+│ AQI | Forecast | SHAP  │
+└────────────────────────┘
+```
+### 7.1 Data Layer
+
+* Open-Meteo API collects AQI data
+* Data stored in MongoDB:
+
+  * `features` → sensor data + AQI + AQI_ALERT
+  * `model_registry` → active model + version + SHAP
+  * `metrics_history` → model performance
+
+### 7.2 Model Layer
+
+* Models: Ridge, Random Forest, XGBoost, LSTM
+* Evaluation: MAE, RMSE, R²
+* Best model selected automatically
+* SHAP explainer generated for XGBoost
+* Model versioning maintained in MongoDB
+
+**Hazard Alert Rules**
+
+* > 300 → 🚨 Severe Hazard
+* 201–300 → ⚠️ Very Unhealthy
+* 151–200 → ⚠️ Unhealthy
+* ≤150 → ✅ Safe
+
+### 7.3 Application / UI Layer
+
+* Streamlit dashboard loads:
+
+  * Active model
+  * Latest AQI data
+* UI includes:
+
+  * Metric cards
+  * Historical trends
+  * 3-day forecast
+  * Model comparison table
+  * SHAP explainability
+
+## 8. Methodology
+
+### 8.1 Data Preprocessing
+
+* Missing values removed
+* Datetime conversion
+* Feature scaling for LSTM
+* Feature order alignment for XGBoost
+
+### 8.2 Model Training
+
+1. Train multiple models
+2. Evaluate MAE, RMSE, R²
+3. Select best model
+4. Save model & SHAP explainer
+5. Update MongoDB registry
+
+### 8.3 Hazard Alert System
+
+* AQI thresholds applied
+* Alerts stored in MongoDB
+* Displayed live in UI
+
+## 9. Results
+
+| Model         | MAE     | RMSE    | R²       |
+| ------------- | ------- | ------- | -------- |
+| Ridge         | 18.5    | 24.1    | 0.62     |
+| Random Forest | 9.2     | 12.7    | 0.88     |
+| **XGBoost**   | **6.8** | **9.3** | **0.93** |
+| LSTM          | 7.5     | 10.1    | 0.90     |
+
+**Best Model:** XGBoost
+
+## 10. How to Run
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run feature pipeline
+python feature_pipeline.py
+
+# Run training pipeline
+python training_pipeline.py
+
+# Launch Streamlit UI
+streamlit run app.py
+```
+## 11. Usage
+
+* Adjust environmental parameters such as **PM2.5** using the sidebar controls to observe AQI prediction changes.
+* Upload a **SHAP explainer file** (optional) to enable explainability.
+* Monitor **current AQI, air status, and hazard alerts** in real time.
+* Analyze **historical AQI trends** through interactive charts.
+* View **model comparison table and metric visualizations**.
+* Forecast **AQI for the next three days** using the trained model.
+
+## 12. Conclusion
+
+AirSense Karachi delivers a complete AI-driven AQI monitoring solution with:
+
+* Accurate predictions
+* Real-time hazard alerts
+* Explainable AI
+* Scalable cloud architecture
+* User-friendly dashboard
+
+The system is production-ready and extendable to other cities and real-time IoT deployments.
