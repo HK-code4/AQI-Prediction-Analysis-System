@@ -225,7 +225,7 @@ elif selected_tab == "🧪 Model Comparison":
 
     st.markdown("---")
     
-    st.markdown('<div class="card"><h2>🧪 Model Comparison from DB</h2></div>', unsafe_allow_html=True)
+    st.markdown('<div class="card"><h2> Model Comparison</h2></div>', unsafe_allow_html=True)
     if db is not None:
         models_data = list(db["model_registry"].find({}, {"_id":0}).sort("_id",-1))
         if models_data:
@@ -346,3 +346,4 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
