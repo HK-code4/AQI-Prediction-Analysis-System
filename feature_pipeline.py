@@ -45,11 +45,6 @@ def run_feature_pipeline():
     # ---------------- COMPUTE FEATURES ----------------
     df = compute_features(raw_df)
 
-    # ---------------- SAVE CSV FOR GITHUB ACTION ----------------
-    csv_path = os.path.join(os.getcwd(), "features.csv")
-    df.to_csv(csv_path, index=False)
-    print(f"✅ Features CSV saved locally at {csv_path}")
-
     # ---------------- STORE FEATURES ----------------
     feature_collection.delete_many({})
     feature_collection.insert_many(df.to_dict("records"))
@@ -57,3 +52,4 @@ def run_feature_pipeline():
 
 if __name__ == "__main__":
     run_feature_pipeline()
+
