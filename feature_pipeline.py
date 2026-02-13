@@ -13,18 +13,13 @@ def compute_features(raw_df):
     df["day_of_week"] = df["time"].dt.dayofweek
 
     # ---------------- REALISTIC AQI CREATION ----------------
-    # Base AQI influenced by PM2.5 (non-linear effect)
     base_aqi = df["pm2_5"] * 4.5
-    # Add slight non-linearity
     nonlinear_effect = 0.02 * (df["pm2_5"] ** 2)
-    # Add small environmental randomness (very important)
     noise = np.random.normal(0, 8, len(df))
-    # Final AQI (more realistic)
     df["AQI"] = base_aqi + nonlinear_effect + noise
 
     # ---------------- TREND FEATURES ----------------
     df["aqi_rolling_mean_3"] = df["AQI"].rolling(window=3).mean().bfill()
-    # Rolling average (real-world smoothing)
     df["aqi_rolling_mean_3"] = df["AQI"].rolling(window=3).mean().fillna(method="bfill")
 
     return df
@@ -50,19 +45,15 @@ def run_feature_pipeline():
     # ---------------- COMPUTE FEATURES ----------------
     df = compute_features(raw_df)
 
-      # ---------------- SAVE CSV FOR GITHUB ACTION ----------------
-    df.to_csv("features.csv", index=False)
-    print("✅ Features CSV saved locally for GitHub Actions")
+    # ---------------- SAVE CSV FOR GITHUB ACTION ----------------
+    csv_path = os.path.join(os.getcwd(), "features.csv")
+    df.to_csv(csv_path, index=False)
+    print(f"✅ Features CSV saved locally at {csv_path}")
 
     # ---------------- STORE FEATURES ----------------
     feature_collection.delete_many({})
     feature_collection.insert_many(df.to_dict("records"))
-
     print("✅ Features stored in MongoDB Atlas")
-
 
 if __name__ == "__main__":
     run_feature_pipeline()
-
-
-
