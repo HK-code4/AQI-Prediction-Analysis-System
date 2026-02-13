@@ -56,6 +56,11 @@ def run_feature_pipeline():
 
     print("✅ Features stored in MongoDB Atlas")
 
+    # ---------------- SAVE CSV FOR GITHUB ACTION ----------------
+    df.to_csv("features.csv", index=False)
+    print("✅ Features CSV saved locally for GitHub Actions")
+
 if __name__ == "__main__":
     run_feature_pipeline()
+
 
