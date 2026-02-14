@@ -1,28 +1,42 @@
-name: AQI Full Pipeline (Daily)
+name: AQI Automated Pipeline
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *"
- 
+    - cron: "0 * * * *"    # every hour
+    - cron: "0 0 * * *"    # every day at midnight UTC
+
 jobs:
-  full-pipeline:
+
+  feature-job:
+    if: github.event.schedule == '0 * * * *'
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
       - name: Run Feature Pipeline
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
         run: python feature_pipeline.py
+
+
+  training-job:
+    if: github.event.schedule == '0 0 * * *'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
 
       - name: Run Training Pipeline
         env:
