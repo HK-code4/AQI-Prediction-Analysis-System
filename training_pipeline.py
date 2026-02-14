@@ -3,7 +3,6 @@ import joblib
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from dotenv import load_dotenv
 from pymongo import MongoClient
 
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
@@ -16,20 +15,22 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from sklearn.preprocessing import MinMaxScaler
 
+
 def run_training_pipeline():
     # ================= MONGO CONNECTION =================
     mongo_uri = os.getenv("MONGO_URI")
     if not mongo_uri:
         raise ValueError("❌ MONGO_URI environment variable not set!")
+
     client = MongoClient(mongo_uri)
     db = client["aqi_db"]
     registry_col = db["model_registry"]
-    metrics_col = db["metrics_history"]
     features_col = db["features"]
+
     print("✅ Connected to MongoDB Atlas")
 
-   # ---------------- Load Data ----------------
-    data = list(feature_collection.find({}, {"_id": 0}))
+    # ================= LOAD DATA =================
+    data = list(features_col.find({}, {"_id": 0}))
     if len(data) == 0:
         raise ValueError("❌ No data found in feature collection")
 
@@ -38,22 +39,22 @@ def run_training_pipeline():
 
     TARGET_COLUMN = "AQI"
     if TARGET_COLUMN not in df.columns:
-        raise ValueError(f"❌ Target column '{TARGET_COLUMN}' not found in data")
+        raise ValueError(f"❌ Target column '{TARGET_COLUMN}' not found")
 
-    # ---------------- CLEAN FEATURES ----------------
+    # ================= CLEAN FEATURES =================
     drop_cols = ["time", "AQI_ALERT"]
     X = df.drop(columns=[TARGET_COLUMN] + [c for c in drop_cols if c in df.columns], errors="ignore")
     X = X.select_dtypes(include=[np.number])
     y = df[TARGET_COLUMN]
 
-    # ---------------- Train/Test Split ----------------
+    # ================= TRAIN TEST SPLIT =================
     split_index = int(len(df) * 0.8)
     X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
     y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
 
     tscv = TimeSeriesSplit(n_splits=5)
 
-    # ---------------- Models ----------------
+    # ================= MODELS =================
     model_grids = {
         "Ridge": {
             "model": Ridge(),
@@ -72,8 +73,9 @@ def run_training_pipeline():
     cv_results = {}
     best_models = {}
 
-    # ---------------- Traditional ML ----------------
+    # ================= TRADITIONAL ML =================
     for name, config in model_grids.items():
+
         grid = GridSearchCV(
             estimator=config["model"],
             param_grid=config["params"],
@@ -81,6 +83,7 @@ def run_training_pipeline():
             scoring="neg_root_mean_squared_error",
             n_jobs=1
         )
+
         grid.fit(X_train, y_train)
         best_model = grid.best_estimator_
         best_models[name] = best_model
@@ -99,15 +102,22 @@ def run_training_pipeline():
             r2s.append(r2_score(y_val, preds))
 
         mae_mean = np.mean(maes)
+        rmse_mean = np.mean(rmses)
         r2_mean = np.mean(r2s)
+
+        cv_results[name] = {
+            "MAE": mae_mean,
+            "RMSE": rmse_mean,
+            "R2": r2_mean,
+            "Robust_Score": rmse_mean
+        }
 
         print(f"\n📊 {name} Performance:")
         print(f"   MAE  : {mae_mean:.4f}")
         print(f"   RMSE : {rmse_mean:.4f}")
         print(f"   R2   : {r2_mean:.4f}")
-        print(f"   Robust Score : {(rmse_mean + rmse_std):.4f}")
-        print(f"   Best Params  : {grid.best_params_}")
-    # ---------------- LSTM ----------------
+
+    # ================= LSTM =================
     scaler = MinMaxScaler()
     scaled_y = scaler.fit_transform(y.values.reshape(-1, 1))
 
@@ -127,32 +137,38 @@ def run_training_pipeline():
         LSTM(50, activation="relu", input_shape=(X_train_lstm.shape[1], 1)),
         Dense(1)
     ])
+
     lstm.compile(optimizer="adam", loss="mse")
-    lstm.fit(X_train_lstm, y_train_lstm, epochs=10, batch_size=32, verbose=0)
+    lstm.fit(X_train_lstm, y_train_lstm, epochs=5, batch_size=32, verbose=0)
 
     preds_scaled = lstm.predict(X_test_lstm).flatten()
     preds = scaler.inverse_transform(preds_scaled.reshape(-1, 1)).flatten()
     y_true = scaler.inverse_transform(y_test_lstm.reshape(-1, 1)).flatten()
 
-    rmse_mean = np.sqrt(mean_squared_error(y_true, preds))
-
+    rmse_lstm = np.sqrt(mean_squared_error(y_true, preds))
     mae_lstm = mean_absolute_error(y_true, preds)
     r2_lstm = r2_score(y_true, preds)
 
-    print(f"\n📊 LSTM Performance:")
-    print(f"   MAE  : {mae_lstm:.4f}")
-    print(f"   RMSE : {rmse_mean:.4f}")
-    print(f"   R2   : {r2_lstm:.4f}")
-    print(f"   Robust Score : {rmse_mean:.4f}")
+    cv_results["LSTM"] = {
+        "MAE": mae_lstm,
+        "RMSE": rmse_lstm,
+        "R2": r2_lstm,
+        "Robust_Score": rmse_lstm
+    }
 
     best_models["LSTM"] = lstm
 
-    # ---------------- Select Best ----------------
-    best_model_name = min(cv_results, key=lambda m: cv_results[m]["Robust_Score"])
-    print("🏆 Best Model:", best_model_name)
+    print("\n📊 LSTM Performance:")
+    print(f"   MAE  : {mae_lstm:.4f}")
+    print(f"   RMSE : {rmse_lstm:.4f}")
+    print(f"   R2   : {r2_lstm:.4f}")
 
-    # ---------------- Save All Models ----------------
-    registry_collection.update_many({}, {"$set": {"is_active": False}})
+    # ================= SELECT BEST =================
+    best_model_name = min(cv_results, key=lambda m: cv_results[m]["Robust_Score"])
+    print("\n🏆 Best Model:", best_model_name)
+
+    # ================= SAVE MODELS =================
+    registry_col.update_many({}, {"$set": {"is_active": False}})
     os.makedirs("saved_models", exist_ok=True)
 
     for model_name, model_obj in best_models.items():
@@ -172,10 +188,11 @@ def run_training_pipeline():
             "created_at": datetime.utcnow()
         }
 
-        registry_collection.insert_one(registry_entry)
+        registry_col.insert_one(registry_entry)
         print(f"✅ {model_name} saved (Active={model_name == best_model_name})")
 
-    print(" Training Completed Successfully!")
+    print("\n🎉 Training Completed Successfully!")
+
 
 if __name__ == "__main__":
     run_training_pipeline()
