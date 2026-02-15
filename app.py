@@ -4,7 +4,6 @@ import numpy as np
 import datetime
 import plotly.express as px
 from pymongo import MongoClient
-import gridfs
 import joblib
 import io
 from tensorflow.keras.models import load_model
@@ -336,4 +335,5 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
