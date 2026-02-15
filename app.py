@@ -40,16 +40,17 @@ st.markdown('<div class="header"><h1>🌍 AirSense Karachi – AI-Powered AQI In
 
 @st.cache_resource
 def init_connection():
-    mongo_uri = os.getenv("MONGO_URI")
-
-    if not mongo_uri:
-        st.error("❌ MONGO_URI environment variable not set!")
-        st.stop()
-
     try:
-        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+        mongo_uri = st.secrets["MONGO_URI"]
+
+        client = MongoClient(
+            mongo_uri,
+            serverSelectionTimeoutMS=5000
+        )
+
         client.admin.command("ping")
         return client
+
     except Exception as e:
         st.error(f"❌ Database connection failed: {e}")
         st.stop()
@@ -346,4 +347,5 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
