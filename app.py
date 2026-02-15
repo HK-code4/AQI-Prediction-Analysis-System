@@ -90,27 +90,35 @@ def load_active_model_from_db():
         if active_meta and "model_path" in active_meta:
             path = active_meta["model_path"]
             if os.path.exists(path):
-                return joblib.load(path), active_meta.get("model_name", "DB Model")
+                model = joblib.load(path)
+                # Use the stored model_name in DB
+                return model, active_meta.get("model_name", "DB Model")
         return None, "No Active DB Model"
     except Exception as e:
         return None, f"DB Load Error: {e}"
 
-# ------------------- MODEL PRIORITY & NAME FIX --------------------
+# ------------------ Load Model Logic ------------------
+model = None
+model_name = "No Model Loaded"
+
 # Priority 1: Uploaded Model
 if uploaded_model is not None:
     model = load_model_from_upload(uploaded_model)
-    # Attempt to infer model name from uploaded file name
-    try:
-        # Example: RandomForest.pkl → RandomForest
-        model_name = os.path.splitext(uploaded_model.name)[0]
-    except:
-        model_name = "Uploaded Model"
     if model:
+        # Infer model name from file name: RandomForest.pkl -> Random Forest
+        try:
+            raw_name = os.path.splitext(uploaded_model.name)[0]  # remove .pkl
+            # Add spaces before capital letters (CamelCase -> words)
+            model_name = ''.join([' ' + c if c.isupper() else c for c in raw_name]).strip().title()
+        except:
+            model_name = "Uploaded Model"
         st.sidebar.success(f"✅ {model_name} Loaded Successfully!")
 
-# Priority 2: DB Model (fallback)
+# Priority 2: DB Model fallback
 else:
     model, model_name = load_active_model_from_db()
+    if model:
+        st.sidebar.success(f"✅ {model_name} Loaded from DB!")
         
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
@@ -345,6 +353,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
