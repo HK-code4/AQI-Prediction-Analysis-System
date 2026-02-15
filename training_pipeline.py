@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from pymongo import MongoClient
+from feature_pipeline import run_feature_pipeline
 
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -195,4 +196,5 @@ def run_training_pipeline():
 
 
 if __name__ == "__main__":
+    run_feature_pipeline()
     run_training_pipeline()
