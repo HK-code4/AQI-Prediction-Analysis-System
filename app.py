@@ -61,53 +61,58 @@ def load_data():
 
 df = load_data()
 
-# ============================= LOAD ACTIVE MODEL =============================
+# =====================================================================
+# ======================= ✅ UPDATED MODEL SECTION =====================
+# =====================================================================
+
+st.sidebar.markdown("---")
+st.sidebar.header("📤 Upload Model")
+
+uploaded_model = st.sidebar.file_uploader(
+    "Click below to upload your Best Model (.pkl)",
+    type=["pkl"]
+)
 
 @st.cache_resource
-def load_active_model():
-    if db is None:
-        return None, "No DB Connection"
-
+def load_model_from_upload(uploaded_file):
     try:
-        # Get active model metadata
-        active_meta = db["model_registry"].find_one(
+        return joblib.load(uploaded_file)
+    except Exception as e:
+        st.sidebar.error(f"❌ Error loading uploaded model: {e}")
+        return None
+
+@st.cache_resource
+def load_active_model_from_db():
+    try:
+        active_meta = model_registry_col.find_one(
             {"is_active": True},
             sort=[("_id", -1)]
         )
-
-        if active_meta is None:
-            return None, "No Active Model Found"
-
-        model_name = active_meta.get("model_name", "Unknown")
-        model_file_id = active_meta.get("model_file_id")
-
-        if model_file_id is None:
-            return None, "Model File ID Missing"
-
-        # Download model file from GridFS
-        model_file = fs.get(model_file_id)
-
-        # Save temporarily
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            tmp.write(model_file.read())
-            temp_path = tmp.name
-
-        model = joblib.load(temp_path)
-
-        return model, model_name
-
+        if active_meta and "model_path" in active_meta:
+            path = active_meta["model_path"]
+            if os.path.exists(path):
+                return joblib.load(path), active_meta.get("model_name", "DB Model")
+        return None, "No Active DB Model"
     except Exception as e:
-        return None, f"Error Loading Model: {e}"
+        return None, f"DB Load Error: {e}"
 
+# Priority 1: Uploaded Model
+if uploaded_model is not None:
+    model = load_model_from_upload(uploaded_model)
+    model_name = "Uploaded Model"
+    if model:
+        st.sidebar.success("✅ Uploaded Model Loaded Successfully!")
 
-model, model_name = load_active_model()
+# Priority 2: DB Model (fallback)
+else:
+    model, model_name = load_active_model_from_db()
 
 # ============================= MODEL STATUS =============================
 
 if model:
     st.success(f"✅ Active Model Loaded: {model_name}")
 else:
-    st.error(f"❌ Model Not Loaded: {model_name}")
+    st.error("❌ No Model Loaded. Please upload a model.")
         
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
@@ -331,3 +336,4 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
