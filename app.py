@@ -97,28 +97,33 @@ def load_active_model_from_db():
     except Exception as e:
         return None, f"DB Load Error: {e}"
 
-# ------------------ Load Model Logic ------------------
-model = None
-model_name = "No Model Loaded"
+# ----------------- NEW FUNCTION TO INFER MODEL TYPE -----------------
+def get_model_type_name(model_obj):
+    if model_obj is None: return "Unknown Model"
+    # sklearn models
+    cls_name = model_obj.__class__.__name__
+    if "RandomForest" in cls_name:
+        return "Random Forest"
+    if "Ridge" in cls_name:
+        return "Ridge Regression"
+    if "XGB" in cls_name or "XGBoost" in cls_name:
+        return "XGBoost"
+    if "Sequential" in cls_name:
+        # Keras/TensorFlow LSTM
+        return "LSTM"
+    # fallback
+    return cls_name
 
-# Priority 1: Uploaded Model
+# ----------------- LOAD MODEL -----------------
 if uploaded_model is not None:
     model = load_model_from_upload(uploaded_model)
+    # infer name dynamically from model object
+    model_name = get_model_type_name(model)
     if model:
-        # Infer model name from file name: RandomForest.pkl -> Random Forest
-        try:
-            raw_name = os.path.splitext(uploaded_model.name)[0]  # remove .pkl
-            # Add spaces before capital letters (CamelCase -> words)
-            model_name = ''.join([' ' + c if c.isupper() else c for c in raw_name]).strip().title()
-        except:
-            model_name = "Uploaded Model"
         st.sidebar.success(f"✅ {model_name} Loaded Successfully!")
-
-# Priority 2: DB Model fallback
 else:
     model, model_name = load_active_model_from_db()
-    if model:
-        st.sidebar.success(f"✅ {model_name} Loaded from DB!")
+    model_name = get_model_type_name(model)
         
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
@@ -353,6 +358,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
