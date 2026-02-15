@@ -11,25 +11,14 @@ import os
 st.set_page_config(page_title="AQI Intelligence Platform", layout="wide")
 st.markdown("""
 <style>
-/* General body styling */
 body { background-color: #f4f7fa; font-family: 'Segoe UI', sans-serif; }
-/* Card styling */
 .card { background: white; border-radius: 15px; padding: 20px; margin-bottom: 15px; 
         box-shadow: 2px 2px 15px rgba(0,0,0,0.1);}
 .card h2, .card h3 { color: #0072ff; }
-/* Header styling */
 .header { background: linear-gradient(to right, #00c6ff, #0072ff); color:white; 
           padding:20px; border-radius:15px; text-align:center; margin-bottom:20px; }
-
-/* Pollutant Box Styling */
-.pollutant-box {
-    background-color: #1e1e1e;
-    color: white;
-    padding: 15px;
-    border-radius: 10px;
-    border-left: 5px solid #4CAF50;
-    margin-bottom: 10px;
-}
+.pollutant-box { background-color: #1e1e1e; color: white; padding: 15px;
+    border-radius: 10px; border-left: 5px solid #4CAF50; margin-bottom: 10px; }
 .pollutant-box.warning { border-left: 5px solid #FFC107; }
 </style>
 """, unsafe_allow_html=True)
@@ -37,28 +26,19 @@ body { background-color: #f4f7fa; font-family: 'Segoe UI', sans-serif; }
 st.markdown('<div class="header"><h1>🌍 AirSense Karachi – AI-Powered AQI Intelligence</h1><p>AI-powered AQI prediction & forecast</p></div>', unsafe_allow_html=True)
 
 # ============================== DATABASE CONNECTION ==================
-
 @st.cache_resource
 def init_connection():
     try:
         mongo_uri = st.secrets["MONGO_URI"]
-
-        client = MongoClient(
-            mongo_uri,
-            serverSelectionTimeoutMS=5000
-        )
-
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
         client.admin.command("ping")
         return client
-
     except Exception as e:
         st.error(f"❌ Database connection failed: {e}")
         st.stop()
 
 client = init_connection()
 db = client["aqi_db"]
-
-# Collections
 features_col = db["features"]
 model_registry_col = db["model_registry"]
 
@@ -99,6 +79,15 @@ def aqi_status(aqi):
     if aqi <= 300: return "🟣 Very Unhealthy"
     return "⚠️ Hazardous"
 
+def predict_aqi(model, input_df):
+    try:
+        pred = float(model.predict(input_df)[0])
+        status = aqi_status(pred)
+    except Exception:
+        pred = 0.0
+        status = "⚠️ Error"
+    return pred, status
+
 # ============================== FEATURE ALIGNMENT ===================
 try:
     model_features = list(model.feature_names_in_)
@@ -121,18 +110,14 @@ if "pm2_5" in model_features: input_dict["pm2_5"] = pm25_input
 elif "pm25" in model_features: input_dict["pm25"] = pm25_input
 
 X_input = pd.DataFrame([input_dict])[model_features]
-try:
-    current_aqi = float(model.predict(X_input)[0])
-except:
-    current_aqi = 0.0
+current_aqi, current_status = predict_aqi(model, X_input)
 
 # ============================== LIVE AQI =============================
 if selected_tab == "🌫️ Live AQI":
     st.markdown('<div class="card"><h2>🌍 Current AQI – Live Prediction</h2></div>', unsafe_allow_html=True)
-    
     c1, c2, c3 = st.columns(3)
     c1.metric("Predicted AQI", f"{current_aqi:.1f}")
-    c2.metric("Air Quality Status", aqi_status(current_aqi))
+    c2.metric("Air Quality Status", current_status)
     c3.metric("Active Model", model_name)
 
     st.markdown("---")
@@ -149,11 +134,14 @@ if selected_tab == "🌫️ Live AQI":
 
     if show_forecast:
         st.markdown('<h3 style="color:#0072ff">🔮 3-Day Forecast</h3>', unsafe_allow_html=True)
-        cols = st.columns(3)
+        forecast_aqi = []
         for i in range(3):
             f_date = datetime.date.today() + datetime.timedelta(days=i+1)
-            predicted = current_aqi + (i+1)*2
+            predicted = current_aqi + (i+1)*2  # Placeholder for forecast logic
             status = aqi_status(predicted)
+            forecast_aqi.append((f_date, predicted, status))
+        cols = st.columns(3)
+        for i, (f_date, predicted, status) in enumerate(forecast_aqi):
             cols[i].markdown(f"""
             <div style="
                 background: linear-gradient(to bottom right,#00c6ff,#0072ff);
@@ -179,54 +167,29 @@ if selected_tab == "🌫️ Live AQI":
         st.plotly_chart(fig_hist, use_container_width=True)
 
 # ============================== MODEL COMPARISON =====================
-    
 elif selected_tab == "🧪 Model Comparison":
     st.markdown("<h3>🔬 Models Used</h3>", unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
-
-    box_style = """
-    background: transparent;
-    border: 2px solid #ffffff;
-    padding:15px;
-    border-radius:12px;
-    margin-bottom:15px;
-    color:white;
-    """
-
-    col1.markdown(f"""
-    <div style="{box_style}">
-    <h4 style="color:white;">Ridge Regression</h4>
-    <p>Regularized linear regression model that reduces overfitting and stabilizes AQI prediction.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col2.markdown(f"""
-    <div style="{box_style}">
-    <h4 style="color:white;">Random Forest</h4>
-    <p>Ensemble tree-based model that captures nonlinear pollution patterns effectively.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col3, col4 = st.columns(2)
-
-    col3.markdown(f"""
-    <div style="{box_style}">
-    <h4 style="color:white;">XGBoost</h4>
-    <p>High-performance gradient boosting model optimized for AQI regression accuracy.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col4.markdown(f"""
-    <div style="{box_style}">
-    <h4 style="color:white;">LSTM</h4>
-    <p>Deep learning time-series model capturing long-term AQI temporal dependencies.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Info boxes (static)
+    cols = st.columns(4)
+    models_info = ["Ridge Regression", "Random Forest", "XGBoost", "LSTM"]
+    descriptions = [
+        "Regularized linear regression model that reduces overfitting.",
+        "Ensemble tree-based model that captures nonlinear pollution patterns.",
+        "High-performance gradient boosting model optimized for AQI regression.",
+        "Deep learning time-series model capturing long-term AQI dependencies."
+    ]
+    for col, name, desc in zip(cols, models_info, descriptions):
+        col.markdown(f"""
+        <div style="background: transparent; border: 2px solid #ffffff; padding:15px; border-radius:12px; margin-bottom:15px; color:white;">
+        <h4 style="color:white;">{name}</h4>
+        <p>{desc}</p>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("---")
-    
     st.markdown('<div class="card"><h2> Model Comparison</h2></div>', unsafe_allow_html=True)
+
     if db is not None:
         models_data = list(db["model_registry"].find({}, {"_id":0}).sort("_id",-1))
         if models_data:
@@ -239,38 +202,36 @@ elif selected_tab == "🧪 Model Comparison":
                     if isinstance(metrics_dict, dict):
                         all_metrics.update(metrics_dict.keys())
                 for m in all_metrics:
-                    df_models[m.lower()] = df_models['cv_metrics'].apply(
-                        lambda x: x.get(m) if isinstance(x, dict) else np.nan
-                    )
+                    df_models[m.lower()] = df_models['cv_metrics'].apply(lambda x: x.get(m) if isinstance(x, dict) else np.nan)
 
             metric_cols = [col for col in df_models.columns if col not in ['model_name','model_path','cv_metrics','best_params','is_active','created_at']]
             name_col = "model_name" if "model_name" in df_models.columns else "model"
             display_cols = [name_col] + metric_cols
             display_df = df_models[display_cols]
 
+            # Determine best model
             best_idx = None
             best_name = None
-            if 'rmse' in display_df.columns and not display_df.empty:
-                best_idx = display_df['rmse'].idxmin()
+            best_metric = None
+            numeric_metrics = [c for c in metric_cols if pd.api.types.is_numeric_dtype(display_df[c])]
+
+            if numeric_metrics and not display_df.empty:
+                best_metric = "rmse" if "rmse" in numeric_metrics else numeric_metrics[0]
+                best_idx = display_df[best_metric].idxmin()
                 best_name = display_df.loc[best_idx, name_col]
                 st.subheader(f"🏆 Best Model: {best_name}")
-                st.markdown(f"**Reason:** Lowest RMSE ({display_df.loc[best_idx,'rmse']:.4f}) indicates predictions are closest to actual AQI.")
-            elif metric_cols and not display_df.empty:
-                first_metric = metric_cols[0]
-                best_idx = display_df[first_metric].idxmin()
-                best_name = display_df.loc[best_idx, name_col]
-                st.subheader(f"🏆 Best Model (based on {first_metric}): {best_name}")
+                st.markdown(f"**Reason:** Best {best_metric.upper()} = {display_df.loc[best_idx,best_metric]:.4f}")
 
+            # Highlight table
             def highlight_best(s):
                 if best_idx is None: return ['' for _ in s]
                 return ['background-color: #004d00; color:white' if s.name==best_idx else '' for _ in s]
 
             st.dataframe(display_df.style.apply(highlight_best, axis=1), use_container_width=True)
 
-            numeric_metrics = [c for c in metric_cols if pd.api.types.is_numeric_dtype(display_df[c])]
+            # Plot comparison
             if numeric_metrics:
-                viz_df = display_df.melt(id_vars=name_col, value_vars=numeric_metrics, 
-                                          var_name="Metric", value_name="Value")
+                viz_df = display_df.melt(id_vars=name_col, value_vars=numeric_metrics, var_name="Metric", value_name="Value")
                 fig_compare = px.bar(
                     viz_df,
                     x="Metric",
@@ -289,14 +250,12 @@ elif selected_tab == "📈 Monthly/Yearly Trend":
         if "Predicted_AQI" not in df.columns:
             df["Predicted_AQI"] = current_aqi
 
-        # Monthly
         df["month_year"] = df["time"].dt.to_period("M").astype(str)
         monthly_df = df.groupby("month_year")[["AQI","Predicted_AQI"]].mean().reset_index()
         fig_month = px.line(monthly_df, x="month_year", y=["AQI","Predicted_AQI"], markers=True, title="Monthly AQI Trend")
         fig_month.update_traces(mode="lines+markers", line_width=3)
         st.plotly_chart(fig_month, use_container_width=True)
 
-        # Yearly
         df["year"] = df["time"].dt.year
         yearly_df = df.groupby("year")[["AQI","Predicted_AQI"]].mean().reset_index()
         fig_year = px.line(yearly_df, x="year", y=["AQI","Predicted_AQI"], markers=True, title="Yearly AQI Trend")
@@ -306,8 +265,6 @@ elif selected_tab == "📈 Monthly/Yearly Trend":
 # ============================== ABOUT TAB ============================
 elif selected_tab == "ℹ️ About":
     st.markdown('<div class="card"><h2>ℹ️ About AirSense Karachi</h2></div>', unsafe_allow_html=True)
-    
-    # ------------------- POLLUTANT DATA SECTION (FROM IMAGE) -------------------
     st.markdown("### 🌫️ Major Air Pollutants - Karachi Status")
     
     row1_col1, row1_col2, row1_col3 = st.columns(3)
@@ -319,7 +276,6 @@ elif selected_tab == "ℹ️ About":
         st.markdown('<div class="pollutant-box"><b>Particulate Matter (PM10)</b><br><h3>45 µg/m³</h3></div>', unsafe_allow_html=True)
     with row1_col3:
         st.markdown('<div class="pollutant-box"><b>Carbon Monoxide (CO)</b><br><h3>466 ppb</h3></div>', unsafe_allow_html=True)
-
     with row2_col1:
         st.markdown('<div class="pollutant-box"><b>Sulfur Dioxide (SO2)</b><br><h3>2 ppb</h3></div>', unsafe_allow_html=True)
     with row2_col2:
@@ -328,7 +284,6 @@ elif selected_tab == "ℹ️ About":
         st.markdown('<div class="pollutant-box"><b>Ozone (O3)</b><br><h3>28 ppb</h3></div>', unsafe_allow_html=True)
     
     st.markdown("---")
-    
     st.markdown("""
     <p>
     AirSense Karachi is an AI-driven Air Quality Intelligence platform designed to monitor,
@@ -336,7 +291,6 @@ elif selected_tab == "ℹ️ About":
     It provides real-time monitoring, forecasting, trend analysis, and model evaluation.
     </p>
     """, unsafe_allow_html=True)
-
     st.markdown("""
     <p>AI-powered AQI Dashboard for Karachi.</p>
     <ul>
@@ -347,5 +301,3 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
-
-
