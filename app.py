@@ -46,7 +46,6 @@ client = init_connection()
 db = client["aqi_db"]
 features_col = db["features"]
 model_registry_col = db["model_registry"]
-fs = gridfs.GridFS(db)  # GridFS to store/load models
 
 # ============================== LOAD DATA ============================
 @st.cache_data
@@ -61,35 +60,18 @@ def load_data():
 
 df = load_data()
 
-# ============================== LOAD ACTIVE MODEL FROM GRIDFS ===================
+# ============================== LOAD LOCAL BEST MODEL ===================
 @st.cache_resource
-def load_active_model_from_db():
+def load_best_model():
     try:
-        active_meta = model_registry_col.find_one({"is_active": True}, sort=[("_id", -1)])
-        if not active_meta:
-            st.warning("No active model in DB. Using fallback.")
-            return None, "Fallback"
-
-        model_name = active_meta.get("model_name", "Ridge")
-        filename = f"{model_name}.pkl" if model_name != "LSTM" else f"{model_name}.h5"
-
-        # Fetch model from GridFS
-        if not fs.exists(filename):
-            st.warning(f"Active model file '{filename}' not found in DB GridFS.")
-            return None, model_name
-
-        file_obj = fs.get_last_version(filename=filename).read()
-        if model_name == "LSTM":
-            model = load_model(io.BytesIO(file_obj))
-        else:
-            model = joblib.load(io.BytesIO(file_obj))
-
-        return model, model_name
+        model_path = os.path.join("models", "best_model.pkl")
+        model = joblib.load(model_path)
+        return model, "Best Model (Local)"
     except Exception as e:
-        st.error(f"Failed to load active model from DB: {e}")
+        st.error(f"❌ Failed to load local model: {e}")
         return None, "Fallback"
 
-model, model_name = load_active_model_from_db()
+model, model_name = load_best_model()
 
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
@@ -183,3 +165,4 @@ elif selected_tab == "🧪 Model Comparison":
             st.dataframe(display_df.style.apply(highlight_best, axis=1), use_container_width=True)
 
 # ============================== OTHER TABS REMAIN UNCHANGED =====================
+
