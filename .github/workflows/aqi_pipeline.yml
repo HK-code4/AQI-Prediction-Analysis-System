@@ -2,13 +2,13 @@ name: AQI Automated Pipeline
 
 on:
   schedule:
-    - cron: "0 * * * *"    # every hour
-    - cron: "0 0 * * *"    # every day at midnight UTC
-  workflow_dispatch:
+    - cron: "0 * * * *"    # hourly
+    - cron: "0 0 * * *"    # daily
 
 jobs:
 
   feature-job:
+    if: github.event.schedule == '0 * * * *'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +22,7 @@ jobs:
         run: python feature_pipeline.py
 
   training-job:
-    needs: feature-job
+    if: github.event.schedule == '0 0 * * *'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,8 +34,3 @@ jobs:
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
         run: python training_pipeline.py
-      - name: Upload trained model
-        uses: actions/upload-artifact@v4
-        with:
-          name: trained-model-${{ github.run_number }}
-          path: saved_models/
