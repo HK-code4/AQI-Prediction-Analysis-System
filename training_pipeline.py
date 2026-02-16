@@ -164,34 +164,59 @@ def run_training_pipeline():
     print(f"   RMSE : {rmse_lstm:.4f}")
     print(f"   R2   : {r2_lstm:.4f}")
 
-    # ================= SELECT BEST =================
+    # ================= SELECT BEST MODEL =================
     best_model_name = min(cv_results, key=lambda m: cv_results[m]["Robust_Score"])
-    print("\n🏆 Best Model:", best_model_name)
+    best_model = best_models[best_model_name]
 
-    # ================= SAVE MODELS =================
-    registry_col.update_many({}, {"$set": {"is_active": False}})
-    os.makedirs("saved_models", exist_ok=True)
+    print("\n🏆 Best Model Selected:", best_model_name)
 
-    for model_name, model_obj in best_models.items():
+    # ================= SAVE ONLY BEST MODEL =================
+    model_dir = "models"
+    os.makedirs(model_dir, exist_ok=True)
 
+    # Clear old models
+    for f in os.listdir(model_dir):
+        file_path = os.path.join(model_dir, f)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+    if best_model_name == "LSTM":
+        best_model_path = os.path.join(model_dir, "best_model.h5")
+        best_model.save(best_model_path)
+    else:
+        best_model_path = os.path.join(model_dir, "best_model.pkl")
+        joblib.dump(best_model, best_model_path)
+
+    print(f"✅ Best model saved at: {best_model_path}")
+
+    # ================= UPDATE REGISTRY =================
+
+    # Clear old registry
+    registry_col.delete_many({})
+
+    for model_name, metrics in cv_results.items():
+
+        is_best = model_name == best_model_name
+
+        # Save model file
         if model_name == "LSTM":
-            model_path = f"saved_models/{model_name}.h5"
-            model_obj.save(model_path)
+            model_path = os.path.join(model_dir, f"{model_name}.h5")
+            best_models[model_name].save(model_path)
         else:
-            model_path = f"saved_models/{model_name}.pkl"
-            joblib.dump(model_obj, model_path)
+            model_path = os.path.join(model_dir, f"{model_name}.pkl")
+            joblib.dump(best_models[model_name], model_path)
 
         registry_entry = {
             "model_name": model_name,
             "model_path": model_path,
-            "cv_metrics": cv_results[model_name],
-            "is_active": model_name == best_model_name,
+            "cv_metrics": metrics,
+            "is_active": is_best,
             "created_at": datetime.utcnow()
         }
 
         registry_col.insert_one(registry_entry)
-        print(f"✅ {model_name} saved (Active={model_name == best_model_name})")
 
+    print("✅ All models saved in registry")
     print("\n🎉 Training Completed Successfully!")
 
 
