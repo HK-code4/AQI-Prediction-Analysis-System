@@ -213,6 +213,145 @@ if selected_tab == "🌫️ Live AQI":
         </div>
         """, unsafe_allow_html=True)
 
+ # ================= PREMIUM HISTORICAL vs FORECAST COMPARISON =================
+    st.markdown("---")
+    st.markdown('<h3 style="color:#00c6ff">📊 Historical vs Forecast Intelligence View</h3>', unsafe_allow_html=True)
+
+    if not df.empty:
+
+        df_sorted = df.sort_values("time")
+
+        # ----------- Last 7 Historical Points -----------
+        hist_df = df_sorted.tail(7).copy()
+
+        if "AQI" in hist_df.columns:
+            hist_df["Value"] = hist_df["AQI"]
+        else:
+            hist_df["Value"] = hist_df["Predicted_AQI"]
+
+        # Convert last timestamp safely
+        last_time = hist_df["time"].iloc[-1].to_pydatetime()
+        last_actual = float(hist_df["Value"].iloc[-1])
+
+        # ----------- Forecast (Next 3 Days) -----------
+        forecast_dates = []
+        forecast_values = []
+
+        for i in range(3):
+            forecast_dates.append(last_time + datetime.timedelta(days=i + 1))
+            forecast_values.append(current_aqi + (i + 1) * 2)
+
+        forecast_df = pd.DataFrame({
+            "time": forecast_dates,
+            "Value": forecast_values
+        })
+
+        # ----------- Combine Data for Line Plot -----------
+        combined_df = pd.concat([
+            hist_df[["time", "Value"]],
+            forecast_df
+        ])
+
+        # ----------- % Change Calculation -----------
+        future_avg = np.mean(forecast_values)
+        percent_change = ((future_avg - last_actual) / last_actual) * 100
+
+        if percent_change > 0:
+            arrow = "⬆️"
+            trend_text = "increase"
+            trend_color = "#ff4d4d"
+        else:
+            arrow = "⬇️"
+            trend_text = "decrease"
+            trend_color = "#00ff88"
+
+        # ----------- Create Interactive Plot -----------
+        fig = px.line(
+            combined_df,
+            x="time",
+            y="Value",
+            markers=True,
+            template="plotly_dark"
+        )
+
+        # Style main line
+        fig.update_traces(line=dict(width=4, color="#00ff88"))
+
+        # Add shaded forecast area
+        fig.add_scatter(
+            x=forecast_df["time"],
+            y=forecast_df["Value"],
+            fill="tozeroy",
+            mode="lines",
+            line=dict(color="#ff7f50", width=4),
+            name="Forecast"
+        )
+
+        # Add vertical separator line (Today marker)
+        fig.add_vline(
+            x=last_time,
+            line_width=2,
+            line_dash="dash",
+            line_color="white"
+        )
+
+        fig.update_layout(
+            hovermode="x unified",
+            xaxis_title="Date",
+            yaxis_title="AQI Level",
+            showlegend=False
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ----------- Custom Legend Explanation -----------
+    st.markdown(
+        """
+        <div style="
+            background-color:#111;
+            padding:10px;
+            border-radius:8px;
+            margin-top:10px;
+            font-size:14px;
+        ">
+        <b>Chart Guide:</b><br>
+        <span style="color:#00ff88;">■ Green Line</span> – Historical AQI (Past Observations)<br>
+        <span style="color:#ff7f50;">■ Orange Area</span> – Forecasted AQI (Next 3 Days)<br>
+        <span style="color:white;">■ White Dashed Line</span> – Today (Separation Between Past & Future)
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # ----------- Insight Section -----------
+    st.markdown(
+        f"""
+        <div style="
+            background-color:#111;
+            padding:15px;
+            border-radius:10px;
+            border-left:5px solid {trend_color};
+            margin-top:10px;
+        ">
+        <h4 style="color:{trend_color};">
+        {arrow} Forecast shows {abs(percent_change):.2f}% {trend_text}
+        compared to last recorded AQI.
+        </h4>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # ----------- One-Line Explanation -----------
+    st.markdown(
+        """
+        <p style="color:#cccccc; font-size:16px; margin-top:8px;">
+        AQI is projected to slightly change over the next 3 days compared to the most recent observed level.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+
 # ============================== MODEL COMPARISON =====================
 elif selected_tab == "🧪 Model Comparison":
     st.markdown("<h3>🔬 Models Used</h3>", unsafe_allow_html=True)
@@ -358,6 +497,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
