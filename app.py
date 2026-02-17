@@ -145,17 +145,11 @@ except AttributeError:
 tabs = ["🌫️ Live AQI","🧪 Model Comparison","📈 Monthly/Yearly Trend","ℹ️ About"]
 selected_tab = st.sidebar.radio("🔹 Navigation", tabs, index=0)
 
-st.sidebar.markdown("---")
-st.sidebar.header("🎛️ Environmental Controls")
+
 latest = df.iloc[-1] if not df.empty else {}
-default_pm = float(latest.get("pm2_5", latest.get("pm25", 35.0)))
-pm25_input = st.sidebar.slider("PM2.5 (µg/m³)", 0.0, 500.0, default_pm)
-
 input_dict = {feat: latest.get(feat, 0.0) for feat in model_features}
-if "pm2_5" in model_features: input_dict["pm2_5"] = pm25_input
-elif "pm25" in model_features: input_dict["pm25"] = pm25_input
-
 X_input = pd.DataFrame([input_dict])[model_features]
+
 try:
     current_aqi = float(model.predict(X_input)[0])
 except:
@@ -497,6 +491,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
