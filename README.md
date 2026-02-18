@@ -6,7 +6,7 @@
 
 ## 1. Abstract
 
-AirSense Karachi is an intelligent system designed to predict, forecast, and monitor the Air Quality Index (AQI) of Karachi using machine learning and deep learning models. The platform provides real-time hazard alerts, historical AQI trends, 3-day forecasting, and explainable AI insights using SHAP. All components are integrated into an interactive Streamlit dashboard backed by MongoDB Atlas for scalable data storage and model versioning.
+AirSense Karachi is an intelligent system designed to predict, forecast, and monitor the Air Quality Index (AQI) of Karachi using machine learning and deep learning models. The platform provides real-time hazard alerts, historical AQI trends, 3-day forecasting. All components are integrated into an interactive Streamlit dashboard backed by MongoDB Atlas for scalable data storage and model versioning.
 
 ## 2. Motivation
 
@@ -21,7 +21,6 @@ Air pollution is a serious environmental and health issue in metropolitan cities
 * Predict real-time AQI using sensor and environmental data
 * Forecast AQI for the next 3 days
 * Automatically generate AQI hazard alerts
-* Provide explainable AI using SHAP
 * Store models, metrics, and alerts in MongoDB
 * Develop an interactive Streamlit-based dashboard
 
@@ -41,10 +40,6 @@ Air pollution is a serious environmental and health issue in metropolitan cities
 * Scikit-learn
 * XGBoost
 * TensorFlow / Keras (LSTM)
-
-**Explainability**
-
-* SHAP
 
 **Database**
 
@@ -80,8 +75,6 @@ All data is stored and updated in MongoDB Atlas for real-time and historical ana
   Forecasts AQI values for the next three days based on the latest environmental data.
 * **Hazard Alerts**
   Automatically categorizes AQI levels as ✅ Safe, ⚠️ Unhealthy, or 🚨 Severe Hazard. Alerts are stored and retrieved from MongoDB in real time.
-* **Explainable AI (SHAP)**
-  Provides SHAP-based explainability to interpret model predictions and understand the contribution of each feature.
 * **Model Comparison**
   Compares multiple models (Ridge, Random Forest, XGBoost, LSTM) using MAE, RMSE, and R² metrics with both tabular and visual representation.
 * **Historical AQI Trends**
@@ -115,7 +108,7 @@ The AQI Intelligence Platform follows a **three-layer architecture** with an end
 │        MongoDB Atlas (Cloud)       │
 │ ┌──────────────┐ ┌───────────────┐ │
 │ │ features     │ │ model_registry│ │
-│ │ AQI + ALERT  │ │ model + SHAP  │ │
+│ │ AQI + ALERT  │ │     model     │ │
 │ └──────────────┘ └───────────────┘ │
 │ ┌────────────────────────────────┐ │
 │ │ metrics_history                │ │
@@ -126,14 +119,13 @@ The AQI Intelligence Platform follows a **three-layer architecture** with an end
           ▼
 ┌────────────────────────┐
 │  Model Training Layer  │
-│ Ridge | RF | XGB |LSTM │
-│ SHAP + Versioning      │
+│ Ridge | RF | XGB |LSTM │                  
 └─────────┬──────────────┘
           │
           ▼
 ┌────────────────────────┐
 │   Streamlit Dashboard  │
-│ AQI | Forecast | SHAP  │
+│ AQI | Forecast         │
 └────────────────────────┘
 ```
 ### 7.1 Data Layer
@@ -142,7 +134,7 @@ The AQI Intelligence Platform follows a **three-layer architecture** with an end
 * Data stored in MongoDB:
 
   * `features` → sensor data + AQI + AQI_ALERT
-  * `model_registry` → active model + version + SHAP
+  * `model_registry` → active model 
   * `metrics_history` → model performance
 
 ### 7.2 Model Layer
@@ -150,8 +142,6 @@ The AQI Intelligence Platform follows a **three-layer architecture** with an end
 * Models: Ridge, Random Forest, XGBoost, LSTM
 * Evaluation: MAE, RMSE, R²
 * Best model selected automatically
-* SHAP explainer generated for XGBoost
-* Model versioning maintained in MongoDB
 
 **Hazard Alert Rules**
 
@@ -172,7 +162,6 @@ The AQI Intelligence Platform follows a **three-layer architecture** with an end
   * Historical trends
   * 3-day forecast
   * Model comparison table
-  * SHAP explainability
 
 ## 8. Methodology
 
@@ -188,7 +177,6 @@ The AQI Intelligence Platform follows a **three-layer architecture** with an end
 1. Train multiple models
 2. Evaluate MAE, RMSE, R²
 3. Select best model
-4. Save model & SHAP explainer
 5. Update MongoDB registry
 
 ### 8.3 Hazard Alert System
@@ -199,12 +187,12 @@ The AQI Intelligence Platform follows a **three-layer architecture** with an end
 
 ## 9. Results
 
-| Model         | MAE     | RMSE    | R²       |
-| ------------- | ------- | ------- | -------- |
-| Ridge         | 18.5    | 24.1    | 0.62     |
-| Random Forest | 9.2     | 12.7    | 0.88     |
-| **XGBoost**   | **6.8** | **9.3** | **0.93** |
-| LSTM          | 7.5     | 10.1    | 0.90     |
+| Model            | MAE     | RMSE    | R²       |
+| -------------    | ------- | ------- | -------- |
+| Ridge            | 7.2     | 9.43    | 0.96     |
+|**Random Forest** | **6.33**| **7.97**| **0.97** |
+| XGBoost          | 6.38    | 8.12    | 0.97     |
+| LSTM             | 25      | 32      | 35       |
 
 **Best Model:** XGBoost
 
