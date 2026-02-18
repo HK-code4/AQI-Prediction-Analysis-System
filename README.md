@@ -1,7 +1,7 @@
 # 🌍 AirSense Karachi – AI-Powered AQI Intelligence
 
 🔗 **Live UI (Streamlit Dashboard):**
-👉 *[http://localhost:8501](http://localhost:8501)*
+👉 *[http://localhost:8501](https://aqi-prediction-analysis-system.streamlit.app/)*
 
 
 ## 1. Abstract
