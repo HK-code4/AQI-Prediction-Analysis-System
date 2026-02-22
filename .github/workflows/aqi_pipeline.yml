@@ -27,26 +27,50 @@ on:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90  # Increased timeout for LSTM training
 
     env:
       MONGO_URI: ${{ secrets.MONGO_URI }}
       PYTHONPATH: ${{ github.workspace }}
 
     steps:
+      # -------------------------
+      # Checkout Code
+      # -------------------------
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # -------------------------
+      # Setup Python
+      # -------------------------
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
+      # -------------------------
+      # Cache pip dependencies
+      # -------------------------
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # -------------------------
+      # Install Dependencies
+      # -------------------------
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install --upgrade setuptools wheel
           pip install -r requirements.txt
 
+      # -------------------------
+      # Determine Step to Run
+      # -------------------------
       - name: Determine Step
         id: determine
         run: |
@@ -77,7 +101,7 @@ jobs:
         if: steps.determine.outputs.step == 'fetch' || steps.determine.outputs.step == 'full'
         run: |
           echo "Running raw data fetch..."
-          python Fetch_raw_data.py
+          python ./Fetch_raw_data.py
           echo "Data fetch completed."
 
       # -------------------------
@@ -87,7 +111,7 @@ jobs:
         if: steps.determine.outputs.step == 'features' || steps.determine.outputs.step == 'full'
         run: |
           echo "Running feature engineering..."
-          python feature_pipeline.py
+          python ./feature_pipeline.py
           echo "Feature pipeline completed."
 
       # -------------------------
@@ -97,7 +121,7 @@ jobs:
         if: steps.determine.outputs.step == 'train' || steps.determine.outputs.step == 'full'
         run: |
           echo "Running model training..."
-          python training_pipeline.py
+          python ./training_pipeline.py
           echo "Training completed."
 
       # -------------------------
@@ -106,7 +130,11 @@ jobs:
       - name: Check Model Files
         run: |
           echo "Checking models directory..."
-          ls -lah models || echo "No models folder found"
+          if [ -d "models" ]; then
+            ls -lah models
+          else
+            echo "No models folder found"
+          fi
 
       # -------------------------
       # Pipeline Summary
