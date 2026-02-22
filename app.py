@@ -8,7 +8,10 @@ import joblib
 import io
 from tensorflow.keras.models import load_model
 import os
+from dotenv import load_dotenv
 
+# ✅ Load .env file
+load_dotenv()
 # ============================== PAGE CONFIG ==========================
 st.set_page_config(page_title="AQI Intelligence Platform", layout="wide")
 st.markdown("""
@@ -43,9 +46,7 @@ def init_connection():
         st.stop()
 
 client = init_connection()
-db = client["aqi_db"]
-features_col = db["features"]
-model_registry_col = db["model_registry"]
+db = client["aqi_db"] if client else None
 
 # ============================== LOAD DATA ============================
 @st.cache_data(ttl=60)
@@ -571,6 +572,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
