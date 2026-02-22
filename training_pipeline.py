@@ -11,9 +11,9 @@ from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
 
-from prophet import Prophet  # <-- new import for Prophet
-
+from prophet import Prophet
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
@@ -46,7 +46,6 @@ def run_training_pipeline():
 
     # ================= CREATE AQI =================
     print("ℹ Creating AQI from pollutants...")
-
     df["AQI"] = (
         0.35 * df["pm25"] +
         0.20 * df["pm10"] +
@@ -58,7 +57,6 @@ def run_training_pipeline():
 
     # ================= CREATE LAG FEATURES =================
     pollutant_cols = ["pm25", "pm10", "no2", "so2", "o3", "co"]
-
     for col in pollutant_cols:
         df[f"{col}_lag1"] = df[col].shift(1)
 
@@ -73,15 +71,10 @@ def run_training_pipeline():
     TARGET_COLUMN = "AQI_target"
 
     # ================= REMOVE LEAKAGE =================
-    leakage_cols = [
-        "AQI", "AQI_target",
-        "pm25", "pm10", "no2", "so2", "o3", "co"
-    ]
-
+    leakage_cols = ["AQI", "AQI_target", "pm25", "pm10", "no2", "so2", "o3", "co"]
     X = df.drop(columns=leakage_cols + ["time"], errors="ignore")
     X = X.select_dtypes(include=["number"])
     X = X.loc[:, X.nunique() > 1]
-
     y = df[TARGET_COLUMN]
 
     print("Features shape:", X.shape)
@@ -147,9 +140,7 @@ def run_training_pipeline():
 
     # ================= PROPHET =================
     print("\n🔍 Training Prophet...")
-
     prophet_df = df[['time', 'AQI_target']].rename(columns={'time':'ds', 'AQI_target':'y'})
-
     train_df = prophet_df.iloc[:split_index]
     test_df = prophet_df.iloc[split_index:]
 
@@ -170,10 +161,15 @@ def run_training_pipeline():
     }
     best_models["Prophet"] = prophet_model
 
-       # ================= SAVE MODELS =================
+    # ================= SELECT BEST MODEL =================
+    best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
+    print(f"\n🏆 Best Model Selected: {best_model_name}")
+
+    # ================= SAVE MODELS =================
     model_dir = "models"
     os.makedirs(model_dir, exist_ok=True)
 
+    # Remove old models in folder
     for f in os.listdir(model_dir):
         os.remove(os.path.join(model_dir, f))
 
@@ -182,13 +178,14 @@ def run_training_pipeline():
     for model_name, metrics in cv_results.items():
         is_best = model_name == best_model_name
 
-        if model_name == "Prophet":
+        if is_best:
+            # Only save best model locally
             model_path = os.path.join(model_dir, f"{model_name}.pkl")
             joblib.dump(best_models[model_name], model_path)
         else:
-            model_path = os.path.join(model_dir, f"{model_name}.pkl")
-            joblib.dump(best_models[model_name], model_path)
+            model_path = None  # non-best models not saved locally
 
+        # Save all models info to MongoDB
         registry_col.insert_one({
             "model_name": model_name,
             "model_path": model_path,
@@ -198,14 +195,8 @@ def run_training_pipeline():
         })
 
     print("✅ Models saved to registry")
-
-    best_model = best_models[best_model_name]
-    best_model_path = os.path.join(model_dir, f"{best_model_name}.pkl")
-    joblib.dump(best_model, best_model_path)
-
     print(f"🏆 Best model saved locally: {best_model_name}")
     print("🎉 Training Completed Successfully!")
-
 
 
 if __name__ == "__main__":
