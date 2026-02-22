@@ -169,33 +169,33 @@ def create_sequences(X_data, y_data, window=24):
         ys.append(y_data[i + window])
     return np.array(Xs), np.array(ys)
 
-# Create train and test sequences
+# Create sequences
 X_train_seq, y_train_seq = create_sequences(X_train_scaled, y_train_scaled)
 X_test_seq, y_test_seq = create_sequences(X_test_scaled, y_test_scaled)
 
-# Only train if we have enough sequences
-if len(X_train_seq) > 0:
+# Check sequences
+if len(X_train_seq) == 0 or np.any(np.isnan(X_train_seq)) or np.any(np.isnan(y_train_seq)):
+    print("❌ Not enough valid data to train LSTM. Skipping LSTM training.")
+else:
+    # Reshape target
+    y_train_seq = y_train_seq.reshape(-1, 1)
+    y_test_seq = y_test_seq.reshape(-1, 1)
 
-    # Build LSTM model
     lstm = Sequential([
         LSTM(64, activation="relu", input_shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
         Dense(1)
     ])
 
     lstm.compile(optimizer="adam", loss="mse")
+    lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=1)
 
-    # Train LSTM
-    lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=0)
-
-    # Predict and inverse transform
     preds_scaled = lstm.predict(X_test_seq)
     preds = target_scaler.inverse_transform(preds_scaled)
     y_true = target_scaler.inverse_transform(y_test_seq)
 
-    # Calculate RMSE
     rmse_lstm = np.sqrt(mean_squared_error(y_true, preds))
+    print(f"   RMSE: {rmse_lstm:.4f}")
 
-    # Store metrics
     cv_results["LSTM"] = {
         "MAE": mean_absolute_error(y_true, preds),
         "RMSE": rmse_lstm,
@@ -203,12 +203,8 @@ if len(X_train_seq) > 0:
         "Robust_Score": rmse_lstm
     }
 
-    # Store trained model
     best_models["LSTM"] = lstm
-
-    print(f"   RMSE: {rmse_lstm:.4f}")
-else:
-    print("❌ Not enough data to train LSTM. Skipping LSTM training.")
+    
     # ================= SELECT BEST =================
     best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
     print(f"\n🏆 Best Model Selected: {best_model_name}")
