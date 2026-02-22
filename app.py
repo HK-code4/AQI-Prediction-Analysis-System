@@ -70,10 +70,7 @@ if df.empty:
     st.stop()
 
 # ============================== LOAD ACTIVE MODEL (UPLOAD ONLY) ===================
-import streamlit as st
-import joblib
-
-# ============================== MODEL UPLOAD ===================
+# -------------------- MODEL UPLOAD --------------------
 st.sidebar.markdown("## 📂 Upload Active Model")
 uploaded_model = st.sidebar.file_uploader(
     "Upload your ML model (.pkl or .joblib)", 
@@ -97,6 +94,15 @@ def load_uploaded_model(uploaded_file):
 model, model_name = load_uploaded_model(uploaded_model)
 st.success(f"✅ Model '{model_name}' loaded successfully!")
 
+# -------------------- Now you can safely do predictions --------------------
+latest = df.iloc[-1]
+input_dict = {feat: latest.get(feat, 0.0) for feat in model_features}
+X_input = pd.DataFrame([input_dict])[model_features]
+
+try:
+    current_aqi = float(model.predict(X_input)[0])
+except:
+    current_aqi = 0.0
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
     if aqi <= 50: return "🌿 Excellent"
@@ -535,6 +541,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
