@@ -69,38 +69,70 @@ if df.empty:
     st.warning("No AQI data available.")
     st.stop()
 
-# ============================== LOAD ACTIVE MODEL (UPLOAD ONLY) ===================
-# -------------------- MODEL UPLOAD --------------------
-st.sidebar.markdown("## 📂 Upload Active Model")
-uploaded_model = st.sidebar.file_uploader(
-    "Upload your ML model (.pkl or .joblib)", 
-    type=["pkl", "joblib"]
-)
-
-if uploaded_model is None:
-    st.warning("⚠️ Please upload an ML model to proceed.")
-    st.stop()  # Stops everything else until user uploads a model
-
-# Load the uploaded model
+# ============================== LOAD MODELS ===========================
 @st.cache_resource
-def load_uploaded_model(uploaded_file):
-    try:
-        model = joblib.load(uploaded_file)
-        return model, uploaded_file.name
-    except Exception as e:
-        st.error(f"Uploaded model could not be loaded: {e}")
-        return None, "Fallback"
+def load_models(files):
+    loaded = []
+    for f in files:
+        try:
+            m = joblib.load(f)
+            features = list(m.feature_names_in_) if hasattr(m, "feature_names_in_") else None
+            loaded.append({"model": m, "name": f.name, "features": features})
+        except Exception as e:
+            st.warning(f"Failed to load {f.name}: {e}")
+    return loaded
 
-model, model_name = load_uploaded_model(uploaded_model)
-st.success(f"✅ Model '{model_name}' loaded successfully!")
+models_info = load_models(uploaded_models)
 
-# -------------------- Now you can safely do predictions --------------------
-latest = df.iloc[-1]
-input_dict = {feat: latest.get(feat, 0.0) for feat in model_features}
-X_input = pd.DataFrame([input_dict])[model_features]
+if not models_info:
+    st.error("No valid models loaded. Please upload again.")
+    st.stop()
+
+# ============================== DETERMINE BEST MODEL ===================
+best_model = None
+best_name = None
+
+if db is not None:
+    # fetch metrics from DB
+    models_data = list(db["model_registry"].find({}, {"_id":0}).sort("_id",-1))
+    if models_data:
+        df_models = pd.DataFrame(models_data)
+        df_models.columns = [c.lower() for c in df_models.columns]
+
+        if 'cv_metrics' in df_models.columns:
+            all_metrics = set()
+            for metrics_dict in df_models['cv_metrics']:
+                if isinstance(metrics_dict, dict):
+                    all_metrics.update(metrics_dict.keys())
+            for m in all_metrics:
+                df_models[m.lower()] = df_models['cv_metrics'].apply(lambda x: x.get(m) if isinstance(x, dict) else np.nan)
+
+        numeric_metrics = [c for c in df_models.columns if pd.api.types.is_numeric_dtype(df_models[c])]
+        if numeric_metrics:
+            best_metric = "rmse" if "rmse" in numeric_metrics else numeric_metrics[0]
+            best_row = df_models.loc[df_models[best_metric].idxmin()]
+            best_name = best_row['model_name']
+            # pick corresponding model
+            for info in models_info:
+                if best_name in info["name"]:
+                    best_model = info["model"]
+                    model_features = info["features"] or [c for c in df.columns if c not in ["time","month_year","year","AQI","Predicted_AQI"]]
+                    break
+
+# fallback if DB info not available
+if best_model is None:
+    best_model = models_info[0]["model"]
+    best_name = models_info[0]["name"]
+    model_features = models_info[0]["features"] or [c for c in df.columns if c not in ["time","month_year","year","AQI","Predicted_AQI"]]
+
+st.success(f"✅ Best Model Selected: {best_name}")
+
+# ============================== CURRENT AQI PREDICTION ===============
+latest_input = df.iloc[-1].reindex(model_features, fill_value=0.0)
+X_input = pd.DataFrame([latest_input])
 
 try:
-    current_aqi = float(model.predict(X_input)[0])
+    current_aqi = float(best_model.predict(X_input)[0])
 except:
     current_aqi = 0.0
 # ============================== UTILITIES ============================
@@ -112,22 +144,22 @@ def aqi_status(aqi):
     if aqi <= 300: return "🟣 Very Unhealthy"
     return "⚠️ Hazardous"
 
-# ============================== FEATURE ALIGNMENT ===================
-if model is not None and hasattr(model, "feature_names_in_"):
-    model_features = list(model.feature_names_in_)
-else:
-    exclude = ["time", "month_year", "year", "AQI", "Predicted_AQI"]
-    model_features = [c for c in df.columns if c not in exclude]
+# # ============================== FEATURE ALIGNMENT ===================
+# if model is not None and hasattr(model, "feature_names_in_"):
+#     model_features = list(model.feature_names_in_)
+# else:
+#     exclude = ["time", "month_year", "year", "AQI", "Predicted_AQI"]
+#     model_features = [c for c in df.columns if c not in exclude]
 
-latest = df.iloc[-1]
+# latest = df.iloc[-1]
 
-input_dict = {feat: latest.get(feat, 0.0) for feat in model_features}
-X_input = pd.DataFrame([input_dict])[model_features]
+# input_dict = {feat: latest.get(feat, 0.0) for feat in model_features}
+# X_input = pd.DataFrame([input_dict])[model_features]
 
-try:
-    current_aqi = float(model.predict(X_input)[0]) if model else 0.0
-except:
-    current_aqi = 0.0
+# try:
+#     current_aqi = float(model.predict(X_input)[0]) if model else 0.0
+# except:
+#     current_aqi = 0.0
 
 # ============================== CUSTOM SIDEBAR ==========================
 # Hide the default radio label and style buttons
@@ -541,6 +573,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
