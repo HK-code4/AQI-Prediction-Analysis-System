@@ -27,7 +27,7 @@ on:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 90  # Increased timeout for training
+    timeout-minutes: 90  # Increased timeout for LSTM training
 
     env:
       MONGO_URI: ${{ secrets.MONGO_URI }}
@@ -123,16 +123,6 @@ jobs:
           echo "Running model training..."
           python ./training_pipeline.py
           echo "Training completed."
-
-      # -------------------------
-      # Upload Versioned Models
-      # -------------------------
-      - name: Upload Models
-        if: steps.determine.outputs.step == 'train' || steps.determine.outputs.step == 'full'
-        uses: actions/upload-artifact@v4
-        with:
-          name: models
-          path: models/run-*/
 
       # -------------------------
       # Simple Health Check
