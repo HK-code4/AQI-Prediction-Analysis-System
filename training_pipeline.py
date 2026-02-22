@@ -151,30 +151,30 @@ def run_training_pipeline():
 
         print(f"   RMSE: {rmse:.4f}")
 
-    # ================= LSTM =================
-    print("\n🔍 Training LSTM...")
+  # ================= LSTM =================
+print("\n🔍 Training LSTM...")
 
-    feature_scaler = MinMaxScaler()
-    target_scaler = MinMaxScaler()
+feature_scaler = MinMaxScaler()
+target_scaler = MinMaxScaler()
 
-    X_train_scaled = feature_scaler.fit_transform(X_train)
-    X_test_scaled = feature_scaler.transform(X_test)
+X_train_scaled = feature_scaler.fit_transform(X_train)
+X_test_scaled = feature_scaler.transform(X_test)
 
-    y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1))
-    y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1))
+y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1))
+y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1))
 
-    def create_sequences(X_data, y_data, window=24):
-        Xs, ys = [], []
-        for i in range(len(X_data) - window):
-            Xs.append(X_data[i:i + window])
-            ys.append(y_data[i + window])
-        return np.array(Xs), np.array(ys)
+def create_sequences(X_data, y_data, window=24):
+    Xs, ys = [], []
+    for i in range(len(X_data) - window):
+        Xs.append(X_data[i:i + window])
+        ys.append(y_data[i + window])
+    return np.array(Xs), np.array(ys)
 
-    X_train_seq, y_train_seq = create_sequences(X_train_scaled, y_train_scaled)
-    X_test_seq, y_test_seq = create_sequences(X_test_scaled, y_test_scaled)
+X_train_seq, y_train_seq = create_sequences(X_train_scaled, y_train_scaled)
+X_test_seq, y_test_seq = create_sequences(X_test_scaled, y_test_scaled)
 
-    if len(X_train_seq) > 0:
-
+if len(X_train_seq) > 0:
+    # ✅ Everything inside this block must be indented
     lstm = Sequential([
         LSTM(64, activation="relu", input_shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
         Dense(1)
