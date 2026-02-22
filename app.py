@@ -117,6 +117,18 @@ def load_active_model():
         st.error(f"❌ Failed to load active model: {e}")
         return None, "Fallback Ridge"
 
+import os
+import joblib
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "Ridge.pkl")
+
+try:
+    model = joblib.load(MODEL_PATH)
+    print("Model loaded successfully")
+except Exception as e:
+    print("Error loading model:", e)
+
 
 # ============================== USAGE ==============================
 model, model_name = load_active_model()
@@ -559,6 +571,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
