@@ -175,11 +175,9 @@ def run_training_pipeline():
     print(f"\n🏆 Best Model Selected: {best_model_name}")
 
     # ================= SAVE MODELS =================
-    model_dir = "models"
-    os.makedirs(model_dir, exist_ok=True)
-
-    for f in os.listdir(model_dir):
-        os.remove(os.path.join(model_dir, f))
+    run_number = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    versioned_model_dir = os.path.join("models", f"run-{run_number}")
+    os.makedirs(versioned_model_dir, exist_ok=True)
 
     registry_col.delete_many({})
 
