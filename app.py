@@ -69,35 +69,57 @@ if df.empty:
     st.stop()
 
 # ============================== LOAD ACTIVE MODEL ===================
-import os
-import joblib
-from tensorflow.keras.models import load_model
-
 @st.cache_resource
 def load_active_model():
-    if db is None:
-        return None, "Fallback"
+    """
+    Load the active model from the local models folder in the repo.
+    Supports .pkl (traditional ML) and .h5 (LSTM) files.
+    """
     try:
-        active_meta = db["model_registry"].find_one({"is_active": True}, sort=[("_id", -1)])
-        if not active_meta:
-            return None, "Fallback"
-
-        path = active_meta.get("model_path")
-        name = active_meta.get("model_name", "Fallback")
-
-        if not path or not os.path.exists(path):
-            st.warning(f"⚠️ Model file not found: {path}")
-            return None, name
-
-        if path.endswith(".h5"):
-            model = load_model(path)
+        # Connect to DB to find active model name (optional)
+        if db is not None:
+            active_meta = db["model_registry"].find_one({"is_active": True}, sort=[("_id", -1)])
+            if active_meta:
+                model_name = active_meta.get("model_name", "Ridge")
+            else:
+                model_name = "Ridge"
         else:
-            model = joblib.load(path)
+            model_name = "Ridge"
 
-        return model, name
+        # Determine model path in repo
+        model_dir = "models"  # Make sure this folder exists in your repo
+        if model_name.lower() == "lstm":
+            model_path = f"{model_dir}/LSTM.h5"
+        elif model_name.lower() == "ridge":
+            model_path = f"{model_dir}/Ridge.pkl"
+        elif model_name.lower() == "randomforest":
+            model_path = f"{model_dir}/RandomForest.pkl"
+        elif model_name.lower() == "xgboost":
+            model_path = f"{model_dir}/XGBoost.pkl"
+        else:
+            # Fallback
+            model_path = f"{model_dir}/Ridge.pkl"
+            model_name = "Ridge"
+
+        # Load model based on file extension
+        if model_path.endswith(".pkl"):
+            import joblib
+            model = joblib.load(model_path)
+        elif model_path.endswith(".h5"):
+            from tensorflow.keras.models import load_model
+            model = load_model(model_path)
+        else:
+            raise ValueError("Unsupported model type")
+
+        return model, model_name
+
     except Exception as e:
-        st.error(f"Error loading model: {e}")
-        return None, "Fallback"
+        st.error(f"❌ Failed to load active model: {e}")
+        return None, "Fallback Ridge"
+
+
+# ============================== USAGE ==============================
+model, model_name = load_active_model()
 
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
@@ -537,6 +559,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
