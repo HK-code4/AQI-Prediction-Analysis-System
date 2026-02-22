@@ -187,14 +187,14 @@ The AQI Intelligence Platform follows a **three-layer architecture** with an end
 
 ## 9. Results
 
-| Model            | MAE     | RMSE    | R²       |
-| -------------    | ------- | ------- | -------- |
-| Ridge            | 7.2     | 9.43    | 0.96     |
-|**Random Forest** | **6.33**| **7.97**| **0.97** |
-| XGBoost          | 6.38    | 8.12    | 0.97     |
-| LSTM             | 25      | 32      | 35       |
+| Model         | MAE     | RMSE    | R²       |
+| ------------- | ------- | ------- | -------- |
+| **Ridge**     | 6.68    | 9.312   | 0.97     |
+| Random Forest | 14      | 22.57   | 0.86     |
+| XGBoost       | 14      | 21.59   | 0.86     |
+| LSTM          | 22      | 31      | 0.74     |
 
-**Best Model:** XGBoost
+**Best Model:** **Ridge**
 
 ## 10. How to Run
 
