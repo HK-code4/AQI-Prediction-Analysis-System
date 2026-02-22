@@ -32,7 +32,7 @@ def run_training_pipeline():
 
     print("✅ Connected to MongoDB Atlas")
 
-     # ================= LOAD DATA =================
+  # ================= LOAD DATA =================
     data = list(features_col.find({}, {"_id": 0}))
     if len(data) == 0:
         raise ValueError("❌ No data found in feature collection")
@@ -151,54 +151,56 @@ def run_training_pipeline():
 
         print(f"   RMSE: {rmse:.4f}")
 
-  # ================= LSTM =================
-print("\n🔍 Training LSTM...")
+    # ================= LSTM =================
+    print("\n🔍 Training LSTM...")
 
-feature_scaler = MinMaxScaler()
-target_scaler = MinMaxScaler()
+    feature_scaler = MinMaxScaler()
+    target_scaler = MinMaxScaler()
 
-X_train_scaled = feature_scaler.fit_transform(X_train)
-X_test_scaled = feature_scaler.transform(X_test)
+    X_train_scaled = feature_scaler.fit_transform(X_train)
+    X_test_scaled = feature_scaler.transform(X_test)
 
-y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1))
-y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1))
+    y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1))
+    y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1))
 
-def create_sequences(X_data, y_data, window=24):
-    Xs, ys = [], []
-    for i in range(len(X_data) - window):
-        Xs.append(X_data[i:i + window])
-        ys.append(y_data[i + window])
-    return np.array(Xs), np.array(ys)
+    def create_sequences(X_data, y_data, window=24):
+        Xs, ys = [], []
+        for i in range(len(X_data) - window):
+            Xs.append(X_data[i:i + window])
+            ys.append(y_data[i + window])
+        return np.array(Xs), np.array(ys)
 
-X_train_seq, y_train_seq = create_sequences(X_train_scaled, y_train_scaled)
-X_test_seq, y_test_seq = create_sequences(X_test_scaled, y_test_scaled)
+    X_train_seq, y_train_seq = create_sequences(X_train_scaled, y_train_scaled)
+    X_test_seq, y_test_seq = create_sequences(X_test_scaled, y_test_scaled)
 
-if len(X_train_seq) > 0:
-    lstm = Sequential([
-        LSTM(64, activation="relu", input_shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
-        Dense(1)
-    ])
+    if len(X_train_seq) > 0:
 
-    lstm.compile(optimizer="adam", loss="mse")
-    lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=1)
+        lstm = Sequential([
+            Input(shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
+            LSTM(64, activation="relu"),
+            Dense(1)
+        ])
 
-    preds_scaled = lstm.predict(X_test_seq)
-    preds = target_scaler.inverse_transform(preds_scaled)
-    y_true = target_scaler.inverse_transform(y_test_seq)
+        lstm.compile(optimizer="adam", loss="mse")
+        lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=0)
 
-    rmse_lstm = np.sqrt(mean_squared_error(y_true, preds))
+        preds_scaled = lstm.predict(X_test_seq)
+        preds = target_scaler.inverse_transform(preds_scaled)
+        y_true = target_scaler.inverse_transform(y_test_seq)
 
-    cv_results["LSTM"] = {
-        "MAE": mean_absolute_error(y_true, preds),
-        "RMSE": rmse_lstm,
-        "R2": r2_score(y_true, preds),
-        "Robust_Score": rmse_lstm
-    }
+        rmse_lstm = np.sqrt(mean_squared_error(y_true, preds))
 
-    best_models["LSTM"] = lstm
+        cv_results["LSTM"] = {
+            "MAE": mean_absolute_error(y_true, preds),
+            "RMSE": rmse_lstm,
+            "R2": r2_score(y_true, preds),
+            "Robust_Score": rmse_lstm
+        }
 
-    print(f"   RMSE: {rmse_lstm:.4f}")
-    
+        best_models["LSTM"] = lstm
+
+        print(f"   RMSE: {rmse_lstm:.4f}")
+
     # ================= SELECT BEST =================
     best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
     print(f"\n🏆 Best Model Selected: {best_model_name}")
@@ -233,7 +235,6 @@ if len(X_train_seq) > 0:
 
     print("✅ Models saved to registry")
     print("🎉 Training Completed Successfully!")
-
 
 if __name__ == "__main__":
     run_training_pipeline()
