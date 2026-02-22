@@ -12,8 +12,11 @@ from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
 
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Input
+from tensorflow.keras.layers import LSTM, Dense
 from sklearn.preprocessing import MinMaxScaler
+
+from dotenv import load_dotenv
+load_dotenv()
 
 
 def run_training_pipeline():
@@ -29,7 +32,7 @@ def run_training_pipeline():
 
     print("✅ Connected to MongoDB Atlas")
 
-   # ================= LOAD DATA =================
+    # ================= LOAD DATA =================
     data = list(features_col.find({}, {"_id": 0}))
     if len(data) == 0:
         raise ValueError("❌ No data found in feature collection")
@@ -56,27 +59,20 @@ def run_training_pipeline():
 
     # ================= CREATE LAG FEATURES =================
     pollutant_cols = ["pm25", "pm10", "no2", "so2", "o3", "co"]
-
     for col in pollutant_cols:
         df[f"{col}_lag1"] = df[col].shift(1)
-
     df["AQI_lag1"] = df["AQI"].shift(1)
 
     # ================= CREATE FUTURE TARGET =================
     df["AQI_target"] = df["AQI"].shift(-1)
 
-    # Remove rows from shifting
+    # Remove rows with NaN from shifting
     df = df.dropna().reset_index(drop=True)
 
     TARGET_COLUMN = "AQI_target"
 
     # ================= REMOVE LEAKAGE =================
-    leakage_cols = [
-        "AQI",            # current AQI
-        "AQI_target",     # future AQI (target)
-        "pm25", "pm10", "no2", "so2", "o3", "co"
-    ]
-
+    leakage_cols = ["AQI", "AQI_target"] + pollutant_cols
     X = df.drop(columns=leakage_cols + ["time"], errors="ignore")
     X = X.select_dtypes(include=["number"])
     X = X.loc[:, X.nunique() > 1]
@@ -108,11 +104,7 @@ def run_training_pipeline():
         },
         "XGBoost": {
             "model": XGBRegressor(random_state=42, verbosity=0),
-            "params": {
-                "n_estimators": [200],
-                "learning_rate": [0.05, 0.1],
-                "max_depth": [3, 6]
-            }
+            "params": {"n_estimators": [200], "learning_rate": [0.05, 0.1], "max_depth": [3, 6]}
         }
     }
 
@@ -121,9 +113,7 @@ def run_training_pipeline():
 
     # ================= TRADITIONAL MODELS =================
     for name, config in model_grids.items():
-
         print(f"\n🔍 Training {name}...")
-
         grid = GridSearchCV(
             estimator=config["model"],
             param_grid=config["params"],
@@ -131,98 +121,82 @@ def run_training_pipeline():
             scoring="neg_root_mean_squared_error",
             n_jobs=1
         )
-
         grid.fit(X_train, y_train)
         best_model = grid.best_estimator_
         best_models[name] = best_model
 
         preds = best_model.predict(X_test)
         rmse = np.sqrt(mean_squared_error(y_test, preds))
-
         cv_results[name] = {
             "MAE": mean_absolute_error(y_test, preds),
             "RMSE": rmse,
             "R2": r2_score(y_test, preds),
             "Robust_Score": rmse
         }
-
         print(f"   RMSE: {rmse:.4f}")
 
     # ================= LSTM =================
-print("\n🔍 Training LSTM...")
+    print("\n🔍 Training LSTM...")
 
-# Scale features and target
-feature_scaler = MinMaxScaler()
-target_scaler = MinMaxScaler()
+    # Scale features and target
+    feature_scaler = MinMaxScaler()
+    target_scaler = MinMaxScaler()
+    X_train_scaled = feature_scaler.fit_transform(X_train)
+    X_test_scaled = feature_scaler.transform(X_test)
+    y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1))
+    y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1))
 
-X_train_scaled = feature_scaler.fit_transform(X_train)
-X_test_scaled = feature_scaler.transform(X_test)
+    # Function to create sequences
+    def create_sequences(X_data, y_data, window=24):
+        Xs, ys = [], []
+        for i in range(len(X_data) - window):
+            Xs.append(X_data[i:i + window])
+            ys.append(y_data[i + window])
+        return np.array(Xs), np.array(ys)
 
-y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1))
-y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1))
+    X_train_seq, y_train_seq = create_sequences(X_train_scaled, y_train_scaled)
+    X_test_seq, y_test_seq = create_sequences(X_test_scaled, y_test_scaled)
 
-# Function to create sequences for LSTM
-def create_sequences(X_data, y_data, window=24):
-    Xs, ys = [], []
-    for i in range(len(X_data) - window):
-        Xs.append(X_data[i:i + window])
-        ys.append(y_data[i + window])
-    return np.array(Xs), np.array(ys)
+    # Check if enough data for LSTM
+    if len(X_train_seq) == 0:
+        print("❌ Not enough data for LSTM. Skipping LSTM training.")
+    else:
+        lstm = Sequential([
+            LSTM(64, activation="relu", input_shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
+            Dense(1)
+        ])
+        lstm.compile(optimizer="adam", loss="mse")
+        lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=1)
 
-# Create sequences
-X_train_seq, y_train_seq = create_sequences(X_train_scaled, y_train_scaled)
-X_test_seq, y_test_seq = create_sequences(X_test_scaled, y_test_scaled)
+        preds_scaled = lstm.predict(X_test_seq)
+        preds = target_scaler.inverse_transform(preds_scaled)
+        y_true = target_scaler.inverse_transform(y_test_seq)
 
-# Check sequences
-if len(X_train_seq) == 0 or np.any(np.isnan(X_train_seq)) or np.any(np.isnan(y_train_seq)):
-    print("❌ Not enough valid data to train LSTM. Skipping LSTM training.")
-else:
-    # Reshape target
-    y_train_seq = y_train_seq.reshape(-1, 1)
-    y_test_seq = y_test_seq.reshape(-1, 1)
+        rmse_lstm = np.sqrt(mean_squared_error(y_true, preds))
+        print(f"   RMSE: {rmse_lstm:.4f}")
 
-    lstm = Sequential([
-        LSTM(64, activation="relu", input_shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
-        Dense(1)
-    ])
+        cv_results["LSTM"] = {
+            "MAE": mean_absolute_error(y_true, preds),
+            "RMSE": rmse_lstm,
+            "R2": r2_score(y_true, preds),
+            "Robust_Score": rmse_lstm
+        }
+        best_models["LSTM"] = lstm
 
-    lstm.compile(optimizer="adam", loss="mse")
-    lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=1)
-
-    preds_scaled = lstm.predict(X_test_seq)
-    preds = target_scaler.inverse_transform(preds_scaled)
-    y_true = target_scaler.inverse_transform(y_test_seq)
-
-    rmse_lstm = np.sqrt(mean_squared_error(y_true, preds))
-    print(f"   RMSE: {rmse_lstm:.4f}")
-
-    cv_results["LSTM"] = {
-        "MAE": mean_absolute_error(y_true, preds),
-        "RMSE": rmse_lstm,
-        "R2": r2_score(y_true, preds),
-        "Robust_Score": rmse_lstm
-    }
-
-    best_models["LSTM"] = lstm
-    
-    # ================= SELECT BEST =================
+    # ================= SELECT BEST MODEL =================
     best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
     print(f"\n🏆 Best Model Selected: {best_model_name}")
 
     # ================= SAVE MODELS =================
     model_dir = "models"
     os.makedirs(model_dir, exist_ok=True)
-
     for f in os.listdir(model_dir):
         os.remove(os.path.join(model_dir, f))
-
     registry_col.delete_many({})
 
     for model_name, metrics in cv_results.items():
-
         is_best = model_name == best_model_name
-
-        if model_name == "LSTM":
+        if model_name == "LSTM" and model_name in best_models:
             model_path = os.path.join(model_dir, f"{model_name}.h5")
             best_models[model_name].save(model_path)
         else:
