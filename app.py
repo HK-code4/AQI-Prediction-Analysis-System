@@ -70,14 +70,23 @@ if df.empty:
     st.stop()
 
 # ============================== LOAD ACTIVE MODEL (UPLOAD ONLY) ===================
-import joblib
 import streamlit as st
+import joblib
 
+# ============================== MODEL UPLOAD ===================
+st.sidebar.markdown("## 📂 Upload Active Model")
+uploaded_model = st.sidebar.file_uploader(
+    "Upload your ML model (.pkl or .joblib)", 
+    type=["pkl", "joblib"]
+)
+
+if uploaded_model is None:
+    st.warning("⚠️ Please upload an ML model to proceed.")
+    st.stop()  # Stops everything else until user uploads a model
+
+# Load the uploaded model
 @st.cache_resource
 def load_uploaded_model(uploaded_file):
-    """
-    Load a model uploaded by the user
-    """
     try:
         model = joblib.load(uploaded_file)
         return model, uploaded_file.name
@@ -85,16 +94,7 @@ def load_uploaded_model(uploaded_file):
         st.error(f"Uploaded model could not be loaded: {e}")
         return None, "Fallback"
 
-# Sidebar: ask user to upload the model
-uploaded_model = st.sidebar.file_uploader("Upload your ML model (.pkl or .joblib)", type=["pkl", "joblib"])
-
-if uploaded_model is None:
-    st.warning("Please upload an ML model to proceed.")
-    st.stop()
-
-# Load the model
 model, model_name = load_uploaded_model(uploaded_model)
-
 st.success(f"✅ Model '{model_name}' loaded successfully!")
 
 # ============================== UTILITIES ============================
@@ -535,6 +535,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
