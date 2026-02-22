@@ -32,7 +32,7 @@ def run_training_pipeline():
 
     print("✅ Connected to MongoDB Atlas")
 
-    # ================= LOAD DATA =================
+     # ================= LOAD DATA =================
     data = list(features_col.find({}, {"_id": 0}))
     if len(data) == 0:
         raise ValueError("❌ No data found in feature collection")
@@ -59,20 +59,27 @@ def run_training_pipeline():
 
     # ================= CREATE LAG FEATURES =================
     pollutant_cols = ["pm25", "pm10", "no2", "so2", "o3", "co"]
+
     for col in pollutant_cols:
         df[f"{col}_lag1"] = df[col].shift(1)
+
     df["AQI_lag1"] = df["AQI"].shift(1)
 
     # ================= CREATE FUTURE TARGET =================
     df["AQI_target"] = df["AQI"].shift(-1)
 
-    # Remove rows with NaN from shifting
+    # Remove rows from shifting
     df = df.dropna().reset_index(drop=True)
 
     TARGET_COLUMN = "AQI_target"
 
     # ================= REMOVE LEAKAGE =================
-    leakage_cols = ["AQI", "AQI_target"] + pollutant_cols
+    leakage_cols = [
+        "AQI",            # current AQI
+        "AQI_target",     # future AQI (target)
+        "pm25", "pm10", "no2", "so2", "o3", "co"
+    ]
+
     X = df.drop(columns=leakage_cols + ["time"], errors="ignore")
     X = X.select_dtypes(include=["number"])
     X = X.loc[:, X.nunique() > 1]
@@ -104,7 +111,11 @@ def run_training_pipeline():
         },
         "XGBoost": {
             "model": XGBRegressor(random_state=42, verbosity=0),
-            "params": {"n_estimators": [200], "learning_rate": [0.05, 0.1], "max_depth": [3, 6]}
+            "params": {
+                "n_estimators": [200],
+                "learning_rate": [0.05, 0.1],
+                "max_depth": [3, 6]
+            }
         }
     }
 
@@ -113,7 +124,9 @@ def run_training_pipeline():
 
     # ================= TRADITIONAL MODELS =================
     for name, config in model_grids.items():
+
         print(f"\n🔍 Training {name}...")
+
         grid = GridSearchCV(
             estimator=config["model"],
             param_grid=config["params"],
@@ -121,21 +134,24 @@ def run_training_pipeline():
             scoring="neg_root_mean_squared_error",
             n_jobs=1
         )
+
         grid.fit(X_train, y_train)
         best_model = grid.best_estimator_
         best_models[name] = best_model
 
         preds = best_model.predict(X_test)
         rmse = np.sqrt(mean_squared_error(y_test, preds))
+
         cv_results[name] = {
             "MAE": mean_absolute_error(y_test, preds),
             "RMSE": rmse,
             "R2": r2_score(y_test, preds),
             "Robust_Score": rmse
         }
+
         print(f"   RMSE: {rmse:.4f}")
 
-  # ================= LSTM =================
+    # ================= LSTM =================
     print("\n🔍 Training LSTM...")
 
     feature_scaler = MinMaxScaler()
@@ -185,20 +201,24 @@ def run_training_pipeline():
 
         print(f"   RMSE: {rmse_lstm:.4f}")
 
-    # ================= SELECT BEST MODEL =================
+    # ================= SELECT BEST =================
     best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
     print(f"\n🏆 Best Model Selected: {best_model_name}")
 
     # ================= SAVE MODELS =================
     model_dir = "models"
     os.makedirs(model_dir, exist_ok=True)
+
     for f in os.listdir(model_dir):
         os.remove(os.path.join(model_dir, f))
+
     registry_col.delete_many({})
 
     for model_name, metrics in cv_results.items():
+
         is_best = model_name == best_model_name
-        if model_name == "LSTM" and model_name in best_models:
+
+        if model_name == "LSTM":
             model_path = os.path.join(model_dir, f"{model_name}.h5")
             best_models[model_name].save(model_path)
         else:
