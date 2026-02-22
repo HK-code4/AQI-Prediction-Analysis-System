@@ -170,10 +170,6 @@ def run_training_pipeline():
     }
     best_models["Prophet"] = prophet_model
 
-    # ================= SELECT BEST =================
-    best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
-    print(f"\n🏆 Best Model Selected: {best_model_name}")
-
        # ================= SAVE MODELS =================
     run_id = os.getenv("GITHUB_RUN_NUMBER")
 
