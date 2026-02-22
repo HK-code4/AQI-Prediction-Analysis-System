@@ -27,7 +27,7 @@ on:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 90  # Increased timeout for LSTM training
+    timeout-minutes: 90  # Increased timeout for training
 
     env:
       MONGO_URI: ${{ secrets.MONGO_URI }}
@@ -121,8 +121,19 @@ jobs:
         if: steps.determine.outputs.step == 'train' || steps.determine.outputs.step == 'full'
         run: |
           echo "Running model training..."
+          export GITHUB_RUN_NUMBER=${{ github.run_number }}
           python ./training_pipeline.py
           echo "Training completed."
+
+      # -------------------------
+      # Upload Trained Models as Artifact
+      # -------------------------
+      - name: Upload Trained Models
+        if: steps.determine.outputs.step == 'train' || steps.determine.outputs.step == 'full'
+        uses: actions/upload-artifact@v3
+        with:
+          name: trained-models-${{ github.run_number }}
+          path: models/
 
       # -------------------------
       # Simple Health Check
