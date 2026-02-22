@@ -11,15 +11,14 @@ from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
-from sklearn.preprocessing import MinMaxScaler
+from prophet import Prophet  # <-- new import for Prophet
 
 from dotenv import load_dotenv
 load_dotenv()
 
 
 def run_training_pipeline():
+
     # ================= MONGO CONNECTION =================
     mongo_uri = os.getenv("MONGO_URI")
     if not mongo_uri:
@@ -32,7 +31,7 @@ def run_training_pipeline():
 
     print("✅ Connected to MongoDB Atlas")
 
-  # ================= LOAD DATA =================
+    # ================= LOAD DATA =================
     data = list(features_col.find({}, {"_id": 0}))
     if len(data) == 0:
         raise ValueError("❌ No data found in feature collection")
@@ -75,8 +74,7 @@ def run_training_pipeline():
 
     # ================= REMOVE LEAKAGE =================
     leakage_cols = [
-        "AQI",            # current AQI
-        "AQI_target",     # future AQI (target)
+        "AQI", "AQI_target",
         "pm25", "pm10", "no2", "so2", "o3", "co"
     ]
 
@@ -124,9 +122,7 @@ def run_training_pipeline():
 
     # ================= TRADITIONAL MODELS =================
     for name, config in model_grids.items():
-
         print(f"\n🔍 Training {name}...")
-
         grid = GridSearchCV(
             estimator=config["model"],
             param_grid=config["params"],
@@ -134,7 +130,6 @@ def run_training_pipeline():
             scoring="neg_root_mean_squared_error",
             n_jobs=1
         )
-
         grid.fit(X_train, y_train)
         best_model = grid.best_estimator_
         best_models[name] = best_model
@@ -148,58 +143,32 @@ def run_training_pipeline():
             "R2": r2_score(y_test, preds),
             "Robust_Score": rmse
         }
-
         print(f"   RMSE: {rmse:.4f}")
 
-    # ================= LSTM =================
-    print("\n🔍 Training LSTM...")
+    # ================= PROPHET =================
+    print("\n🔍 Training Prophet...")
 
-    feature_scaler = MinMaxScaler()
-    target_scaler = MinMaxScaler()
+    prophet_df = df[['time', 'AQI_target']].rename(columns={'time':'ds', 'AQI_target':'y'})
 
-    X_train_scaled = feature_scaler.fit_transform(X_train)
-    X_test_scaled = feature_scaler.transform(X_test)
+    train_df = prophet_df.iloc[:split_index]
+    test_df = prophet_df.iloc[split_index:]
 
-    y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1))
-    y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1))
+    prophet_model = Prophet()
+    prophet_model.fit(train_df)
 
-    def create_sequences(X_data, y_data, window=24):
-        Xs, ys = [], []
-        for i in range(len(X_data) - window):
-            Xs.append(X_data[i:i + window])
-            ys.append(y_data[i + window])
-        return np.array(Xs), np.array(ys)
+    future = test_df[['ds']]
+    forecast = prophet_model.predict(future)
 
-    X_train_seq, y_train_seq = create_sequences(X_train_scaled, y_train_scaled)
-    X_test_seq, y_test_seq = create_sequences(X_test_scaled, y_test_scaled)
+    rmse_prophet = np.sqrt(mean_squared_error(test_df['y'], forecast['yhat']))
+    print(f"   RMSE: {rmse_prophet:.4f}")
 
-    if len(X_train_seq) > 0:
-
-        lstm = Sequential([
-            Input(shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
-            LSTM(64, activation="relu"),
-            Dense(1)
-        ])
-
-        lstm.compile(optimizer="adam", loss="mse")
-        lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=0)
-
-        preds_scaled = lstm.predict(X_test_seq)
-        preds = target_scaler.inverse_transform(preds_scaled)
-        y_true = target_scaler.inverse_transform(y_test_seq)
-
-        rmse_lstm = np.sqrt(mean_squared_error(y_true, preds))
-
-        cv_results["LSTM"] = {
-            "MAE": mean_absolute_error(y_true, preds),
-            "RMSE": rmse_lstm,
-            "R2": r2_score(y_true, preds),
-            "Robust_Score": rmse_lstm
-        }
-
-        best_models["LSTM"] = lstm
-
-        print(f"   RMSE: {rmse_lstm:.4f}")
+    cv_results["Prophet"] = {
+        "MAE": mean_absolute_error(test_df['y'], forecast['yhat']),
+        "RMSE": rmse_prophet,
+        "R2": r2_score(test_df['y'], forecast['yhat']),
+        "Robust_Score": rmse_prophet
+    }
+    best_models["Prophet"] = prophet_model
 
     # ================= SELECT BEST =================
     best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
@@ -215,12 +184,11 @@ def run_training_pipeline():
     registry_col.delete_many({})
 
     for model_name, metrics in cv_results.items():
-
         is_best = model_name == best_model_name
 
-        if model_name == "LSTM":
-            model_path = os.path.join(model_dir, f"{model_name}.h5")
-            best_models[model_name].save(model_path)
+        if model_name == "Prophet":
+            model_path = os.path.join(model_dir, f"{model_name}.pkl")
+            joblib.dump(best_models[model_name], model_path)
         else:
             model_path = os.path.join(model_dir, f"{model_name}.pkl")
             joblib.dump(best_models[model_name], model_path)
@@ -235,6 +203,7 @@ def run_training_pipeline():
 
     print("✅ Models saved to registry")
     print("🎉 Training Completed Successfully!")
+
 
 if __name__ == "__main__":
     run_training_pipeline()
