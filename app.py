@@ -70,17 +70,48 @@ if df.empty:
     st.stop()
 
 # ============================== LOAD ACTIVE MODEL ===================
-# ============================== LOAD ACTIVE MODEL ===================
 @st.cache_resource
 def load_active_model():
-    if db is None: return None, "Fallback"
-    try:
-        active_meta = db["model_registry"].find_one({"is_active": True}, sort=[("_id", -1)])
-        path = active_meta.get("model_path", "saved_models/Ridge.pkl") if active_meta else "saved_models/Ridge.pkl"
-        name = active_meta.get("model_name", "Ridge") if active_meta else "Ridge"
-        return joblib.load(path), name
-    except:
-        return None, "Fallback"
+    """
+    Load the active model in order:
+    1️⃣ GitHub repo folder (saved_models)
+    2️⃣ MongoDB (if repo model not found)
+    3️⃣ Return None if nothing found
+    """
+    fallback_path = "saved_models/Ridge.pkl"  # default repo model
+    fallback_name = "Ridge"
+
+    # --- 1. Try loading from GitHub repo ---
+    if os.path.exists(fallback_path):
+        try:
+            model = joblib.load(fallback_path)
+            return model, fallback_name
+        except Exception as e:
+            st.warning(f"Failed to load model from repo: {e}")
+
+    # --- 2. Try loading from DB ---
+    if db is not None:
+        try:
+            active_meta = db["model_registry"].find_one({"is_active": True}, sort=[("_id", -1)])
+            if active_meta:
+                path = active_meta.get("model_path")
+                name = active_meta.get("model_name", "DB Model")
+                if path and os.path.exists(path):
+                    return joblib.load(path), name
+        except Exception as e:
+            st.warning(f"Failed to load model from DB: {e}")
+
+    # --- 3. If still nothing, let user upload ---
+    uploaded_file = st.sidebar.file_uploader("Upload Model (Fallback)", type=["pkl", "joblib"])
+    if uploaded_file is not None:
+        try:
+            model = joblib.load(uploaded_file)
+            return model, uploaded_file.name
+        except Exception as e:
+            st.error(f"Uploaded model could not be loaded: {e}")
+            return None, "Fallback"
+
+    return None, fallback_name
 
 model, model_name = load_active_model()
 
@@ -522,6 +553,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
