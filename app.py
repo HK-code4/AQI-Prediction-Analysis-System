@@ -69,34 +69,46 @@ if df.empty:
     st.warning("No AQI data available.")
     st.stop()
 
+# ============================== UPLOAD MULTIPLE MODELS ===========================
+uploaded_models = st.sidebar.file_uploader(
+    "Upload your ML models (.pkl or .joblib)", 
+    type=["pkl", "joblib"], 
+    accept_multiple_files=True
+)
+
+# Stop if no models uploaded
+if not uploaded_models:
+    st.warning("⚠️ Please upload at least one ML model (.pkl or .joblib) to proceed.")
+    st.stop()
+
 # ============================== LOAD MODELS ===========================
-# Remove @st.cache_resource — uploaded files cannot be cached directly
 def load_models(files):
+    """
+    Load multiple uploaded ML models and extract features if available.
+    Returns a list of dictionaries: {"model": model_obj, "name": filename, "features": feature_list}
+    """
     loaded = []
     for f in files:
         try:
-            # Load the model directly from the uploaded file
             m = joblib.load(f)
-            # Get feature names if available
             features = list(m.feature_names_in_) if hasattr(m, "feature_names_in_") else None
             loaded.append({"model": m, "name": f.name, "features": features})
         except Exception as e:
             st.warning(f"Failed to load {f.name}: {e}")
+    if not loaded:
+        st.error("No valid models could be loaded. Please upload again.")
+        st.stop()
     return loaded
 
-# Load uploaded models
 models_info = load_models(uploaded_models)
-
-if not models_info:
-    st.error("No valid models loaded. Please upload again.")
-    st.stop()
 
 # ============================== DETERMINE BEST MODEL ===================
 best_model = None
 best_name = None
+model_features = None
 
 if db is not None:
-    # Fetch metrics from DB
+    # Fetch model metrics from DB
     models_data = list(db["model_registry"].find({}, {"_id":0}).sort("_id",-1))
     if models_data:
         df_models = pd.DataFrame(models_data)
@@ -111,30 +123,34 @@ if db is not None:
             for m in all_metrics:
                 df_models[m.lower()] = df_models['cv_metrics'].apply(lambda x: x.get(m) if isinstance(x, dict) else np.nan)
 
-        # Pick numeric metrics for comparison
+        # Pick numeric metrics
         numeric_metrics = [c for c in df_models.columns if pd.api.types.is_numeric_dtype(df_models[c])]
         if numeric_metrics:
             best_metric = "rmse" if "rmse" in numeric_metrics else numeric_metrics[0]
             best_row = df_models.loc[df_models[best_metric].idxmin()]
             best_name = best_row['model_name']
 
-            # Match the DB best model to uploaded model
+            # Match DB best model with uploaded models
             for info in models_info:
                 if best_name in info["name"]:
                     best_model = info["model"]
-                    model_features = info["features"] or [c for c in df.columns if c not in ["time","month_year","year","AQI","Predicted_AQI"]]
+                    model_features = info["features"] or [
+                        c for c in df.columns if c not in ["time","month_year","year","AQI","Predicted_AQI"]
+                    ]
                     break
 
-# Fallback if DB info not available
+# Fallback if DB info not available or no match
 if best_model is None:
     best_model = models_info[0]["model"]
     best_name = models_info[0]["name"]
-    model_features = models_info[0]["features"] or [c for c in df.columns if c not in ["time","month_year","year","AQI","Predicted_AQI"]]
+    model_features = models_info[0]["features"] or [
+        c for c in df.columns if c not in ["time","month_year","year","AQI","Predicted_AQI"]
+    ]
 
 st.success(f"✅ Best Model Selected: {best_name}")
 
 # ============================== CURRENT AQI PREDICTION ===============
-# Align features safely
+# Align features safely for prediction
 latest_input = df.iloc[-1].reindex(model_features, fill_value=0.0)
 X_input = pd.DataFrame([latest_input])
 
@@ -581,6 +597,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
