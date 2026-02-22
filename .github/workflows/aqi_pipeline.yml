@@ -121,19 +121,18 @@ jobs:
         if: steps.determine.outputs.step == 'train' || steps.determine.outputs.step == 'full'
         run: |
           echo "Running model training..."
-          export GITHUB_RUN_NUMBER=${{ github.run_number }}
           python ./training_pipeline.py
           echo "Training completed."
 
       # -------------------------
-      # Upload Trained Models as Artifact
+      # Upload Versioned Models
       # -------------------------
-      - name: Upload Trained Models
+      - name: Upload Models
         if: steps.determine.outputs.step == 'train' || steps.determine.outputs.step == 'full'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: trained-models-${{ github.run_number }}
-          path: models/
+          name: models
+          path: models/run-*/
 
       # -------------------------
       # Simple Health Check
