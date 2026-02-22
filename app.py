@@ -78,7 +78,7 @@ def load_active_model():
     2️⃣ MongoDB (if repo model not found)
     3️⃣ Return None if nothing found
     """
-    fallback_path = "saved_models/Ridge.pkl"  # default repo model
+    fallback_path = "models/Ridge.pkl"  # default repo model
     fallback_name = "Ridge"
 
     # --- 1. Try loading from GitHub repo ---
@@ -553,6 +553,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
