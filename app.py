@@ -48,83 +48,40 @@ features_col = db["features"]
 model_registry_col = db["model_registry"]
 
 # ============================== LOAD DATA ============================
-@st.cache_data
+@st.cache_data(ttl=60)
 def load_data():
+    if db is None:
+        return pd.DataFrame()
     try:
-        df_raw = pd.DataFrame(list(features_col.find({}, {"_id": 0})))
-        if not df_raw.empty and "time" in df_raw.columns:
-            df_raw["time"] = pd.to_datetime(df_raw["time"])
-        return df_raw
-    except:
+        df = pd.DataFrame(list(db["features"].find({}, {"_id": 0})))
+        if not df.empty and "time" in df.columns:
+            df["time"] = pd.to_datetime(df["time"])
+            df = df.sort_values("time")
+        return df
+    except Exception as e:
+        st.error(f"Data loading error: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
-# =====================================================================
-# ======================= ✅ UPDATED MODEL SECTION =====================
-# =====================================================================
+if df.empty:
+    st.warning("No AQI data available.")
+    st.stop()
 
-st.sidebar.markdown("---")
-st.sidebar.header("📤 Upload Model")
-
-uploaded_model = st.sidebar.file_uploader(
-    "Click below to upload your Best Model (.pkl)",
-    type=["pkl"]
-)
-
+# ============================== LOAD ACTIVE MODEL ===================
 @st.cache_resource
-def load_model_from_upload(uploaded_file):
+def load_active_model():
+    if db is None: return None, "Fallback"
     try:
-        return joblib.load(uploaded_file)
-    except Exception as e:
-        st.sidebar.error(f"❌ Error loading uploaded model: {e}")
-        return None
+        active_meta = db["model_registry"].find_one({"is_active": True}, sort=[("_id", -1)])
+        path = active_meta.get("model_path", "saved_models/Ridge.pkl") if active_meta else "saved_models/Ridge.pkl"
+        name = active_meta.get("model_name", "Ridge") if active_meta else "Ridge"
+        return joblib.load(path), name
+    except:
+        return None, "Fallback"
 
-@st.cache_resource
-def load_active_model_from_db():
-    try:
-        active_meta = model_registry_col.find_one(
-            {"is_active": True},
-            sort=[("_id", -1)]
-        )
-        if active_meta and "model_path" in active_meta:
-            path = active_meta["model_path"]
-            if os.path.exists(path):
-                model = joblib.load(path)
-                # Use the stored model_name in DB
-                return model, active_meta.get("model_name", "DB Model")
-        return None, "No Active DB Model"
-    except Exception as e:
-        return None, f"DB Load Error: {e}"
+model, model_name = load_active_model()
 
-# ----------------- NEW FUNCTION TO INFER MODEL TYPE -----------------
-def get_model_type_name(model_obj):
-    if model_obj is None: return "Unknown Model"
-    # sklearn models
-    cls_name = model_obj.__class__.__name__
-    if "RandomForest" in cls_name:
-        return "Random Forest"
-    if "Ridge" in cls_name:
-        return "Ridge Regression"
-    if "XGB" in cls_name or "XGBoost" in cls_name:
-        return "XGBoost"
-    if "Sequential" in cls_name:
-        # Keras/TensorFlow LSTM
-        return "LSTM"
-    # fallback
-    return cls_name
-
-# ----------------- LOAD MODEL -----------------
-if uploaded_model is not None:
-    model = load_model_from_upload(uploaded_model)
-    # infer name dynamically from model object
-    model_name = get_model_type_name(model)
-    if model:
-        st.sidebar.success(f"✅ {model_name} Loaded Successfully!")
-else:
-    model, model_name = load_active_model_from_db()
-    model_name = get_model_type_name(model)
-        
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
     if aqi <= 50: return "🌿 Excellent"
@@ -135,18 +92,31 @@ def aqi_status(aqi):
     return "⚠️ Hazardous"
 
 # ============================== FEATURE ALIGNMENT ===================
-try:
+if model is not None and hasattr(model, "feature_names_in_"):
     model_features = list(model.feature_names_in_)
-except AttributeError:
-    exclude = ["time", "month_year", "year", "Predicted_AQI", "AQI", "aqi"]
+else:
+    exclude = ["time", "month_year", "year", "AQI", "Predicted_AQI"]
     model_features = [c for c in df.columns if c not in exclude]
+
+latest = df.iloc[-1]
+
+input_dict = {feat: latest.get(feat, 0.0) for feat in model_features}
+X_input = pd.DataFrame([input_dict])[model_features]
+
+try:
+    current_aqi = float(model.predict(X_input)[0]) if model else 0.0
+except:
+    current_aqi = 0.0
 
 # ============================== SIDEBAR ==============================
 tabs = ["🌫️ Live AQI","🧪 Model Comparison","📈 Monthly/Yearly Trend","ℹ️ About"]
 selected_tab = st.sidebar.radio("🔹 Navigation", tabs, index=0)
 
+st.sidebar.markdown("---")
 
 latest = df.iloc[-1] if not df.empty else {}
+
+
 input_dict = {feat: latest.get(feat, 0.0) for feat in model_features}
 X_input = pd.DataFrame([input_dict])[model_features]
 
@@ -155,24 +125,76 @@ try:
 except:
     current_aqi = 0.0
 
+
 # ============================== LIVE AQI =============================
 if selected_tab == "🌫️ Live AQI":
+
     st.markdown('<div class="card"><h2>🌍 Current AQI – Live Prediction</h2></div>', unsafe_allow_html=True)
-    
+
     c1, c2, c3 = st.columns(3)
     c1.metric("Predicted AQI", f"{current_aqi:.1f}")
     c2.metric("Air Quality Status", aqi_status(current_aqi))
     c3.metric("Active Model", model_name)
 
     st.markdown("---")
-    if not df.empty:
-        plot_col = "pm2_5" if "pm2_5" in df.columns else "pm25"
-        st.markdown('<h3 style="color:#0072ff">📊 Recent PM2.5 Levels</h3>', unsafe_allow_html=True)
-        fig_recent = px.line(df.tail(100), x="time", y=plot_col)
-        fig_recent.update_traces(line_color='#ff7f50', line_width=4)
-        st.plotly_chart(fig_recent, use_container_width=True)
 
-    st.markdown("---")
+    # ================= POLLUTANT SECTION =================
+    st.markdown("## 🌫️ Major Air Pollutants - Karachi Status")
+
+    POLLUTANTS = {
+        "pm25": "PM2.5 (µg/m³)",
+        "pm10": "PM10 (µg/m³)",
+        "no2": "NO₂ (ppb)",
+        "so2": "SO₂ (ppb)",
+        "co": "CO (ppb)",
+        "o3": "O₃ (ppb)"
+    }
+
+    POLLUTANT_DESCRIPTIONS = {
+        "pm25": "Particulate Matter (PM2.5) indicates fine particles that can penetrate deep into lungs.",
+        "pm10": "PM10 represents larger dust and particle pollution in the air.",
+        "no2": "Nitrogen Dioxide (NO₂) mainly comes from vehicle emissions and industrial activity.",
+        "so2": "Sulfur Dioxide (SO₂) is produced by burning fossil fuels and affects respiratory health.",
+        "co": "Carbon Monoxide (CO) is a colorless gas from incomplete combustion of fuels.",
+        "o3": "Ozone (O₃) at ground level is a secondary pollutant causing smog and respiratory irritation."
+    }
+
+    available_pollutants = [p for p in POLLUTANTS.keys() if p in df.columns]
+
+    if "selected_pollutant" not in st.session_state:
+        st.session_state.selected_pollutant = None
+
+    # -------------------- SHOW CARDS --------------------
+    if st.session_state.selected_pollutant is None:
+
+        cols = st.columns(3)
+        for i, pollutant in enumerate(available_pollutants):
+            col = cols[i % 3]
+            latest_value = float(df[pollutant].iloc[-1])
+            if col.button(f"{POLLUTANTS[pollutant]}\n\n{latest_value:.2f}", key=f"card_{pollutant}",
+                          use_container_width=True):
+                st.session_state.selected_pollutant = pollutant
+                st.rerun()
+
+    # -------------------- SHOW CHART --------------------
+    else:
+        selected = st.session_state.selected_pollutant
+
+        if st.button("⬅ Back to Pollutants"):
+            st.session_state.selected_pollutant = None
+            st.rerun()
+
+        st.markdown(f"## 📊 {POLLUTANTS[selected]} Trend")
+
+        fig = px.line(df.tail(200), x="time", y=selected, template="plotly_dark")
+        fig.update_traces(line_width=3)
+        fig.update_layout(xaxis_title="Time", yaxis_title=POLLUTANTS[selected], hovermode="x unified")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # -------------------- SHOW DESCRIPTION --------------------
+        desc_text = POLLUTANT_DESCRIPTIONS.get(selected, "")
+        st.markdown(f"<p style='color:#cccccc; font-size:16px; margin-top:8px;'>{desc_text}</p>",
+                    unsafe_allow_html=True)
 
     # ================= Historical AQI Trend (FIRST) =================
     if not df.empty:
@@ -207,7 +229,7 @@ if selected_tab == "🌫️ Live AQI":
         </div>
         """, unsafe_allow_html=True)
 
- # ================= PREMIUM HISTORICAL vs FORECAST COMPARISON =================
+    # ================= PREMIUM HISTORICAL vs FORECAST COMPARISON =================
     st.markdown("---")
     st.markdown('<h3 style="color:#00c6ff">📊 Historical vs Forecast Intelligence View</h3>', unsafe_allow_html=True)
 
@@ -459,28 +481,6 @@ elif selected_tab == "ℹ️ About":
 
     st.markdown("---")
 
-    # ------------------- POLLUTANT DATA SECTION (FROM IMAGE) -------------------
-    st.markdown("### 🌫️ Major Air Pollutants - Karachi Status")
-    
-    row1_col1, row1_col2, row1_col3 = st.columns(3)
-    row2_col1, row2_col2, row2_col3 = st.columns(3)
-
-    with row1_col1:
-        st.markdown('<div class="pollutant-box warning"><b>Particulate Matter (PM2.5)</b><br><h3>39 µg/m³</h3></div>', unsafe_allow_html=True)
-    with row1_col2:
-        st.markdown('<div class="pollutant-box"><b>Particulate Matter (PM10)</b><br><h3>45 µg/m³</h3></div>', unsafe_allow_html=True)
-    with row1_col3:
-        st.markdown('<div class="pollutant-box"><b>Carbon Monoxide (CO)</b><br><h3>466 ppb</h3></div>', unsafe_allow_html=True)
-
-    with row2_col1:
-        st.markdown('<div class="pollutant-box"><b>Sulfur Dioxide (SO2)</b><br><h3>2 ppb</h3></div>', unsafe_allow_html=True)
-    with row2_col2:
-        st.markdown('<div class="pollutant-box"><b>Nitrogen Dioxide (NO2)</b><br><h3>12 ppb</h3></div>', unsafe_allow_html=True)
-    with row2_col3:
-        st.markdown('<div class="pollutant-box"><b>Ozone (O3)</b><br><h3>28 ppb</h3></div>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-
     st.markdown("""
     <p style="font-size:18px;">AI-powered AQI Dashboard for Karachi.</p>
     <ul>
@@ -491,6 +491,8 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
+
 
 
 
