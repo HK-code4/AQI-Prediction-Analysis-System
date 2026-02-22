@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
 
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Input
+from tensorflow.keras.layers import LSTM, Dense
 from sklearn.preprocessing import MinMaxScaler
 
 from dotenv import load_dotenv
@@ -175,31 +175,30 @@ def run_training_pipeline():
 
     if len(X_train_seq) > 0:
 
-        lstm = Sequential([
-            Input(shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
-            LSTM(64, activation="relu"),
-            Dense(1)
-        ])
+    lstm = Sequential([
+        LSTM(64, activation="relu", input_shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
+        Dense(1)
+    ])
 
-        lstm.compile(optimizer="adam", loss="mse")
-        lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=0)
+    lstm.compile(optimizer="adam", loss="mse")
+    lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=1)
 
-        preds_scaled = lstm.predict(X_test_seq)
-        preds = target_scaler.inverse_transform(preds_scaled)
-        y_true = target_scaler.inverse_transform(y_test_seq)
+    preds_scaled = lstm.predict(X_test_seq)
+    preds = target_scaler.inverse_transform(preds_scaled)
+    y_true = target_scaler.inverse_transform(y_test_seq)
 
-        rmse_lstm = np.sqrt(mean_squared_error(y_true, preds))
+    rmse_lstm = np.sqrt(mean_squared_error(y_true, preds))
 
-        cv_results["LSTM"] = {
-            "MAE": mean_absolute_error(y_true, preds),
-            "RMSE": rmse_lstm,
-            "R2": r2_score(y_true, preds),
-            "Robust_Score": rmse_lstm
-        }
+    cv_results["LSTM"] = {
+        "MAE": mean_absolute_error(y_true, preds),
+        "RMSE": rmse_lstm,
+        "R2": r2_score(y_true, preds),
+        "Robust_Score": rmse_lstm
+    }
 
-        best_models["LSTM"] = lstm
+    best_models["LSTM"] = lstm
 
-        print(f"   RMSE: {rmse_lstm:.4f}")
+    print(f"   RMSE: {rmse_lstm:.4f}")
 
     # ================= SELECT BEST =================
     best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
