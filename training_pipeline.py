@@ -175,9 +175,16 @@ def run_training_pipeline():
     print(f"\n🏆 Best Model Selected: {best_model_name}")
 
     # ================= SAVE MODELS =================
-    run_number = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    versioned_model_dir = os.path.join("models", f"run-{run_number}")
-    os.makedirs(versioned_model_dir, exist_ok=True)
+   run_id = os.getenv("GITHUB_RUN_NUMBER")
+
+   if run_id:
+      version_name = f"run-{run_id}"
+   else:
+       version_name = f"run-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+   versioned_model_dir = os.path.join("models", version_name)
+   os.makedirs(versioned_model_dir, exist_ok=True)
+
 
     registry_col.delete_many({})
 
