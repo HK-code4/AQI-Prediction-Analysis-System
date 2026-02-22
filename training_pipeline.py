@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
 
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
+from tensorflow.keras.layers import LSTM, Dense, Input
 from sklearn.preprocessing import MinMaxScaler
 
 
