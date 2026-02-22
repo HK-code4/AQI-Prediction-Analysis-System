@@ -30,6 +30,15 @@ raw_df = pd.merge(aq_df, weather_df, on="time", how="inner")
 print("✅ Merged raw data")
 print(raw_df.head())
 
+# ================= COLUMN NORMALIZATION =================
+raw_df = raw_df.rename(columns={
+    "pm2_5": "pm25",
+    "carbon_monoxide": "co",
+    "nitrogen_dioxide": "no2",
+    "sulphur_dioxide": "so2",
+    "ozone": "o3"
+})
+
 
 # Clear old data (important if re-running)
 raw_collection.delete_many({})
@@ -37,4 +46,5 @@ raw_collection.delete_many({})
 raw_collection.insert_many(raw_df.to_dict("records"))
 
 print("✅ Raw data stored in MongoDB Atlas")
+
 
