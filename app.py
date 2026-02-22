@@ -81,25 +81,37 @@ if not uploaded_models:
     st.warning("⚠️ Please upload at least one ML model (.pkl or .joblib) to proceed.")
     st.stop()
 
-# ============================== LOAD MODELS ===========================
 def load_models(files):
     """
     Load multiple uploaded ML models and extract features if available.
-    Returns a list of dictionaries: {"model": model_obj, "name": filename, "features": feature_list}
+    Returns a list of dictionaries: {"model": model_obj, "name": model_name, "features": feature_list}
     """
     loaded = []
     for f in files:
         try:
             m = joblib.load(f)
             features = list(m.feature_names_in_) if hasattr(m, "feature_names_in_") else None
-            loaded.append({"model": m, "name": f.name, "features": features})
+
+            # Remove file extension from name
+            clean_name = f.name.rsplit('.', 1)[0]  # e.g., "random_forest.pkl" -> "random_forest"
+
+            # Optional: map clean names to proper display names
+            model_name_map = {
+                "random_forest": "Random Forest",
+                "ridge": "Ridge Regression",
+                "xgboost": "XGBoost",
+                "lstm": "LSTM"
+            }
+            display_name = model_name_map.get(clean_name.lower(), clean_name)
+
+            loaded.append({"model": m, "name": display_name, "features": features})
         except Exception as e:
             st.warning(f"Failed to load {f.name}: {e}")
     if not loaded:
         st.error("No valid models could be loaded. Please upload again.")
         st.stop()
     return loaded
-
+        
 models_info = load_models(uploaded_models)
 
 # ============================== DETERMINE BEST MODEL ===================
@@ -599,6 +611,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
