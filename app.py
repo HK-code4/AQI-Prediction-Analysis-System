@@ -105,6 +105,7 @@ models_info = load_models(uploaded_models)
 # ============================== DETERMINE BEST MODEL ===================
 best_model = None
 best_name = None
+model_name = None   # ✅ Add this
 model_features = None
 
 if db is not None:
@@ -134,6 +135,7 @@ if db is not None:
             for info in models_info:
                 if best_name in info["name"]:
                     best_model = info["model"]
+                    model_name = info["name"]          # ✅ Assign model_name here
                     model_features = info["features"] or [
                         c for c in df.columns if c not in ["time","month_year","year","AQI","Predicted_AQI"]
                     ]
@@ -143,12 +145,12 @@ if db is not None:
 if best_model is None:
     best_model = models_info[0]["model"]
     best_name = models_info[0]["name"]
+    model_name = models_info[0]["name"]         # ✅ Assign model_name here
     model_features = models_info[0]["features"] or [
         c for c in df.columns if c not in ["time","month_year","year","AQI","Predicted_AQI"]
     ]
 
-st.success(f"✅ Best Model Selected: {best_name}")
-
+st.success(f"✅ Best Model Selected: {model_name}")  # keep using model_name
 # ============================== CURRENT AQI PREDICTION ===============
 # Align features safely for prediction
 latest_input = df.iloc[-1].reindex(model_features, fill_value=0.0)
@@ -597,6 +599,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
