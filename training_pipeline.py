@@ -171,23 +171,23 @@ def run_training_pipeline():
     best_models["Prophet"] = prophet_model
 
        # ================= SAVE MODELS =================
-    run_id = os.getenv("GITHUB_RUN_NUMBER")
+    model_dir = "models"
+    os.makedirs(model_dir, exist_ok=True)
 
-    if run_id:
-        version_name = f"run-{run_id}"
-    else:
-        version_name = f"run-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-
-    versioned_model_dir = os.path.join("models", version_name)
-    os.makedirs(versioned_model_dir, exist_ok=True)
+    for f in os.listdir(model_dir):
+        os.remove(os.path.join(model_dir, f))
 
     registry_col.delete_many({})
 
     for model_name, metrics in cv_results.items():
         is_best = model_name == best_model_name
 
-        model_path = os.path.join(versioned_model_dir, f"{model_name}.pkl")
-        joblib.dump(best_models[model_name], model_path)
+        if model_name == "Prophet":
+            model_path = os.path.join(model_dir, f"{model_name}.pkl")
+            joblib.dump(best_models[model_name], model_path)
+        else:
+            model_path = os.path.join(model_dir, f"{model_name}.pkl")
+            joblib.dump(best_models[model_name], model_path)
 
         registry_col.insert_one({
             "model_name": model_name,
@@ -197,8 +197,15 @@ def run_training_pipeline():
             "created_at": datetime.utcnow()
         })
 
-    print(f"✅ Models saved to: {versioned_model_dir}")
+    print("✅ Models saved to registry")
+
+    best_model = best_models[best_model_name]
+    best_model_path = os.path.join(model_dir, f"{best_model_name}.pkl")
+    joblib.dump(best_model, best_model_path)
+
+    print(f"🏆 Best model saved locally: {best_model_name}")
     print("🎉 Training Completed Successfully!")
+
 
 
 if __name__ == "__main__":
