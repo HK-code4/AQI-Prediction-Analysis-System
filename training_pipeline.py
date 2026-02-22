@@ -174,7 +174,6 @@ X_train_seq, y_train_seq = create_sequences(X_train_scaled, y_train_scaled)
 X_test_seq, y_test_seq = create_sequences(X_test_scaled, y_test_scaled)
 
 if len(X_train_seq) > 0:
-    # ✅ Everything inside this block must be indented
     lstm = Sequential([
         LSTM(64, activation="relu", input_shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
         Dense(1)
@@ -199,7 +198,7 @@ if len(X_train_seq) > 0:
     best_models["LSTM"] = lstm
 
     print(f"   RMSE: {rmse_lstm:.4f}")
-
+    
     # ================= SELECT BEST =================
     best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
     print(f"\n🏆 Best Model Selected: {best_model_name}")
