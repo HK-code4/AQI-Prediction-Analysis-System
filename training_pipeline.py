@@ -135,18 +135,18 @@ def run_training_pipeline():
         }
         print(f"   RMSE: {rmse:.4f}")
 
-    # ================= LSTM =================
+  # ================= LSTM =================
     print("\n🔍 Training LSTM...")
 
-    # Scale features and target
     feature_scaler = MinMaxScaler()
     target_scaler = MinMaxScaler()
+
     X_train_scaled = feature_scaler.fit_transform(X_train)
     X_test_scaled = feature_scaler.transform(X_test)
+
     y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1))
     y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1))
 
-    # Function to create sequences
     def create_sequences(X_data, y_data, window=24):
         Xs, ys = [], []
         for i in range(len(X_data) - window):
@@ -157,23 +157,22 @@ def run_training_pipeline():
     X_train_seq, y_train_seq = create_sequences(X_train_scaled, y_train_scaled)
     X_test_seq, y_test_seq = create_sequences(X_test_scaled, y_test_scaled)
 
-    # Check if enough data for LSTM
-    if len(X_train_seq) == 0:
-        print("❌ Not enough data for LSTM. Skipping LSTM training.")
-    else:
+    if len(X_train_seq) > 0:
+
         lstm = Sequential([
-            LSTM(64, activation="relu", input_shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
+            Input(shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
+            LSTM(64, activation="relu"),
             Dense(1)
         ])
+
         lstm.compile(optimizer="adam", loss="mse")
-        lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=1)
+        lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=0)
 
         preds_scaled = lstm.predict(X_test_seq)
         preds = target_scaler.inverse_transform(preds_scaled)
         y_true = target_scaler.inverse_transform(y_test_seq)
 
         rmse_lstm = np.sqrt(mean_squared_error(y_true, preds))
-        print(f"   RMSE: {rmse_lstm:.4f}")
 
         cv_results["LSTM"] = {
             "MAE": mean_absolute_error(y_true, preds),
@@ -181,7 +180,10 @@ def run_training_pipeline():
             "R2": r2_score(y_true, preds),
             "Robust_Score": rmse_lstm
         }
+
         best_models["LSTM"] = lstm
+
+        print(f"   RMSE: {rmse_lstm:.4f}")
 
     # ================= SELECT BEST MODEL =================
     best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
