@@ -69,29 +69,35 @@ if df.empty:
     st.stop()
 
 # ============================== LOAD ACTIVE MODEL ===================
-import tempfile
-import gridfs
+import os
+import joblib
+from tensorflow.keras.models import load_model
 
-def load_active_model_from_gridfs():
-    fs = gridfs.GridFS(db)
-    active_meta = db["model_registry"].find_one({"is_active": True}, sort=[("_id",-1)])
-    model_name = active_meta.get("model_name", "Fallback")
+@st.cache_resource
+def load_active_model():
+    if db is None:
+        return None, "Fallback"
+    try:
+        active_meta = db["model_registry"].find_one({"is_active": True}, sort=[("_id", -1)])
+        if not active_meta:
+            return None, "Fallback"
 
-    file_id = active_meta.get("file_id")  # store GridFS ObjectId in DB
-    if file_id is None:
-        return None, model_name
+        path = active_meta.get("model_path")
+        name = active_meta.get("model_name", "Fallback")
 
-    grid_out = fs.get(file_id)
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp.write(grid_out.read())
-        tmp_path = tmp.name
+        if not path or not os.path.exists(path):
+            st.warning(f"⚠️ Model file not found: {path}")
+            return None, name
 
-    if tmp_path.endswith(".h5"):
-        model = load_model(tmp_path)
-    else:
-        model = joblib.load(tmp_path)
+        if path.endswith(".h5"):
+            model = load_model(path)
+        else:
+            model = joblib.load(path)
 
-    return model, model_name
+        return model, name
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        return None, "Fallback"
 
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
