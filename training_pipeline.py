@@ -174,29 +174,24 @@ def run_training_pipeline():
     best_model_name = min(cv_results, key=lambda x: cv_results[x]["Robust_Score"])
     print(f"\n🏆 Best Model Selected: {best_model_name}")
 
-    # ================= SAVE MODELS =================
-   run_id = os.getenv("GITHUB_RUN_NUMBER")
+       # ================= SAVE MODELS =================
+    run_id = os.getenv("GITHUB_RUN_NUMBER")
 
-   if run_id:
-      version_name = f"run-{run_id}"
-   else:
-       version_name = f"run-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    if run_id:
+        version_name = f"run-{run_id}"
+    else:
+        version_name = f"run-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
-   versioned_model_dir = os.path.join("models", version_name)
-   os.makedirs(versioned_model_dir, exist_ok=True)
-
+    versioned_model_dir = os.path.join("models", version_name)
+    os.makedirs(versioned_model_dir, exist_ok=True)
 
     registry_col.delete_many({})
 
     for model_name, metrics in cv_results.items():
         is_best = model_name == best_model_name
 
-        if model_name == "Prophet":
-            model_path = os.path.join(model_dir, f"{model_name}.pkl")
-            joblib.dump(best_models[model_name], model_path)
-        else:
-            model_path = os.path.join(model_dir, f"{model_name}.pkl")
-            joblib.dump(best_models[model_name], model_path)
+        model_path = os.path.join(versioned_model_dir, f"{model_name}.pkl")
+        joblib.dump(best_models[model_name], model_path)
 
         registry_col.insert_one({
             "model_name": model_name,
@@ -206,7 +201,7 @@ def run_training_pipeline():
             "created_at": datetime.utcnow()
         })
 
-    print("✅ Models saved to registry")
+    print(f"✅ Models saved to: {versioned_model_dir}")
     print("🎉 Training Completed Successfully!")
 
 
