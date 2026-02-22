@@ -30,27 +30,17 @@ raw_df = pd.merge(aq_df, weather_df, on="time", how="inner")
 print("✅ Merged raw data")
 print(raw_df.head())
 
-# --- Column normalization with checks ---
-rename_dict = {}
-if "pm2_5" in raw_df.columns:
-    rename_dict["pm2_5"] = "pm25"
-if "carbon_monoxide" in raw_df.columns:
-    rename_dict["carbon_monoxide"] = "co"
-if "nitrogen_dioxide" in raw_df.columns:
-    rename_dict["nitrogen_dioxide"] = "no2"
-if "sulphur_dioxide" in raw_df.columns:
-    rename_dict["sulphur_dioxide"] = "so2"
-if "ozone" in raw_df.columns:
-    rename_dict["ozone"] = "o3"
+# ================= COLUMN NORMALIZATION =================
+raw_df = raw_df.rename(columns={
+    "pm2_5": "pm25",
+    "carbon_monoxide": "co",
+    "nitrogen_dioxide": "no2",
+    "sulphur_dioxide": "so2",
+    "ozone": "o3"
+})
 
-raw_df = raw_df.rename(columns=rename_dict)
-
-# --- Ensure all required columns exist ---
-required_cols = ["time", "pm25", "pm10", "no2", "so2", "o3", "co", "temperature_2m", "wind_speed_100m"]
-for col in required_cols:
-    if col not in raw_df.columns:
-        raw_df[col] = np.nan
-
+print("✅ Columns normalized")
+print(raw_df.columns)
 
 # Clear old data (important if re-running)
 raw_collection.delete_many({})
@@ -58,6 +48,4 @@ raw_collection.delete_many({})
 raw_collection.insert_many(raw_df.to_dict("records"))
 
 print("✅ Raw data stored in MongoDB Atlas")
-
-
 
