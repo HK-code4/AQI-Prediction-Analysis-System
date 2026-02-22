@@ -85,6 +85,11 @@ def run_feature_pipeline():
 
     # ---------------- LOAD RAW DATA ----------------
     raw_df = pd.DataFrame(list(raw_collection.find({}, {"_id": 0})))
+
+    # --- FIX: Rename pm2_5 → pm25 ---
+    if "pm2_5" in raw_df.columns:
+        raw_df = raw_df.rename(columns={"pm2_5": "pm25"})
+
     raw_df["time"] = pd.to_datetime(raw_df["time"])
     print("✅ Raw data loaded from MongoDB")
     print(raw_df.head())
@@ -99,5 +104,6 @@ def run_feature_pipeline():
 
 if __name__ == "__main__":
     run_feature_pipeline()
+
 
 
