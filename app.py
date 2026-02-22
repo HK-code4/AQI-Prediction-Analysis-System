@@ -69,18 +69,29 @@ if df.empty:
     st.stop()
 
 # ============================== LOAD ACTIVE MODEL ===================
-@st.cache_resource
-def load_active_model():
-    if db is None: return None, "Fallback"
-    try:
-        active_meta = db["model_registry"].find_one({"is_active": True}, sort=[("_id", -1)])
-        path = active_meta.get("model_path", "saved_models/Ridge.pkl") if active_meta else "saved_models/Ridge.pkl"
-        name = active_meta.get("model_name", "Ridge") if active_meta else "Ridge"
-        return joblib.load(path), name
-    except:
-        return None, "Fallback"
+import tempfile
+import gridfs
 
-model, model_name = load_active_model()
+def load_active_model_from_gridfs():
+    fs = gridfs.GridFS(db)
+    active_meta = db["model_registry"].find_one({"is_active": True}, sort=[("_id",-1)])
+    model_name = active_meta.get("model_name", "Fallback")
+
+    file_id = active_meta.get("file_id")  # store GridFS ObjectId in DB
+    if file_id is None:
+        return None, model_name
+
+    grid_out = fs.get(file_id)
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp.write(grid_out.read())
+        tmp_path = tmp.name
+
+    if tmp_path.endswith(".h5"):
+        model = load_model(tmp_path)
+    else:
+        model = joblib.load(tmp_path)
+
+    return model, model_name
 
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
@@ -108,22 +119,51 @@ try:
 except:
     current_aqi = 0.0
 
-# ============================== SIDEBAR ==============================
+# ============================== CUSTOM SIDEBAR ==========================
+# Hide the default radio label and style buttons
+st.sidebar.markdown(
+    """
+    <style>
+    /* Hide default sidebar header text */
+    .css-1v3fvcr.e1fqkh3o3 {display:none !important;}
+
+    /* Sidebar buttons styling */
+    .custom-button {
+        display: block;
+        width: 100%;
+        text-align: center;
+        background-color: #0072ff;
+        color: white;
+        padding: 15px 0;
+        margin: 10px 0;   /* space between buttons */
+        border-radius: 10px;
+        font-size: 18px;  /* increase size */
+        font-weight: bold;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .custom-button:hover {
+        background-color: #00c6ff;
+        color: #000;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# ============================== CUSTOM NAVIGATION ==========================
 tabs = ["🌫️ Live AQI","🧪 Model Comparison","📈 Monthly/Yearly Trend","ℹ️ About"]
-selected_tab = st.sidebar.radio("🔹 Navigation", tabs, index=0)
 
-st.sidebar.markdown("---")
+# Display buttons in sidebar instead of radio
+for tab in tabs:
+    if st.sidebar.button(tab, key=f"btn_{tab}"):
+        st.session_state.selected_tab = tab
 
-latest = df.iloc[-1] if not df.empty else {}
+# Default selection
+if "selected_tab" not in st.session_state:
+    st.session_state.selected_tab = tabs[0]
 
-
-input_dict = {feat: latest.get(feat, 0.0) for feat in model_features}
-X_input = pd.DataFrame([input_dict])[model_features]
-
-try:
-    current_aqi = float(model.predict(X_input)[0])
-except:
-    current_aqi = 0.0
+selected_tab = st.session_state.selected_tab
 
 
 # ============================== LIVE AQI =============================
@@ -491,6 +531,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
