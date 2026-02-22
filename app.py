@@ -70,18 +70,21 @@ if df.empty:
     st.stop()
 
 # ============================== LOAD MODELS ===========================
-@st.cache_resource
+# Remove @st.cache_resource — uploaded files cannot be cached directly
 def load_models(files):
     loaded = []
     for f in files:
         try:
+            # Load the model directly from the uploaded file
             m = joblib.load(f)
+            # Get feature names if available
             features = list(m.feature_names_in_) if hasattr(m, "feature_names_in_") else None
             loaded.append({"model": m, "name": f.name, "features": features})
         except Exception as e:
             st.warning(f"Failed to load {f.name}: {e}")
     return loaded
 
+# Load uploaded models
 models_info = load_models(uploaded_models)
 
 if not models_info:
@@ -93,12 +96,13 @@ best_model = None
 best_name = None
 
 if db is not None:
-    # fetch metrics from DB
+    # Fetch metrics from DB
     models_data = list(db["model_registry"].find({}, {"_id":0}).sort("_id",-1))
     if models_data:
         df_models = pd.DataFrame(models_data)
         df_models.columns = [c.lower() for c in df_models.columns]
 
+        # Expand cv_metrics if available
         if 'cv_metrics' in df_models.columns:
             all_metrics = set()
             for metrics_dict in df_models['cv_metrics']:
@@ -107,19 +111,21 @@ if db is not None:
             for m in all_metrics:
                 df_models[m.lower()] = df_models['cv_metrics'].apply(lambda x: x.get(m) if isinstance(x, dict) else np.nan)
 
+        # Pick numeric metrics for comparison
         numeric_metrics = [c for c in df_models.columns if pd.api.types.is_numeric_dtype(df_models[c])]
         if numeric_metrics:
             best_metric = "rmse" if "rmse" in numeric_metrics else numeric_metrics[0]
             best_row = df_models.loc[df_models[best_metric].idxmin()]
             best_name = best_row['model_name']
-            # pick corresponding model
+
+            # Match the DB best model to uploaded model
             for info in models_info:
                 if best_name in info["name"]:
                     best_model = info["model"]
                     model_features = info["features"] or [c for c in df.columns if c not in ["time","month_year","year","AQI","Predicted_AQI"]]
                     break
 
-# fallback if DB info not available
+# Fallback if DB info not available
 if best_model is None:
     best_model = models_info[0]["model"]
     best_name = models_info[0]["name"]
@@ -128,12 +134,14 @@ if best_model is None:
 st.success(f"✅ Best Model Selected: {best_name}")
 
 # ============================== CURRENT AQI PREDICTION ===============
+# Align features safely
 latest_input = df.iloc[-1].reindex(model_features, fill_value=0.0)
 X_input = pd.DataFrame([latest_input])
 
 try:
     current_aqi = float(best_model.predict(X_input)[0])
-except:
+except Exception as e:
+    st.warning(f"Prediction failed: {e}")
     current_aqi = 0.0
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
@@ -573,6 +581,7 @@ elif selected_tab == "ℹ️ About":
     <li>Monthly & Yearly AQI trends</li>
     </ul>
     """, unsafe_allow_html=True)
+
 
 
 
