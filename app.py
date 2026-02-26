@@ -1,17 +1,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import joblib
 import datetime
 import plotly.express as px
 from pymongo import MongoClient
-import joblib
-import io
-from tensorflow.keras.models import load_model
-import os
-from dotenv import load_dotenv
 
-# ✅ Load .env file
-load_dotenv()
 # ============================== PAGE CONFIG ==========================
 st.set_page_config(page_title="AQI Intelligence Platform", layout="wide")
 st.markdown("""
@@ -25,8 +19,16 @@ body { background-color: #f4f7fa; font-family: 'Segoe UI', sans-serif; }
 /* Header styling */
 .header { background: linear-gradient(to right, #00c6ff, #0072ff); color:white; 
           padding:20px; border-radius:15px; text-align:center; margin-bottom:20px; }
+
 /* Pollutant Box Styling */
-.pollutant-box { background-color: #1e1e1e; color: white; padding: 15px; border-radius: 10px; border-left: 5px solid #4CAF50; margin-bottom: 10px; }
+.pollutant-box {
+    background-color: #1e1e1e;
+    color: white;
+    padding: 15px;
+    border-radius: 10px;
+    border-left: 5px solid #4CAF50;
+    margin-bottom: 10px;
+}
 .pollutant-box.warning { border-left: 5px solid #FFC107; }
 </style>
 """, unsafe_allow_html=True)
@@ -36,14 +38,13 @@ st.markdown('<div class="header"><h1>🌍 AirSense Karachi – AI-Powered AQI In
 # ============================== DATABASE CONNECTION ==================
 @st.cache_resource
 def init_connection():
+    mongo_uri = "mongodb+srv://kazmihiba22_db_user:OMKVxwdLjXIHYDyQ@cluster0.a2nawnq.mongodb.net/?appName=Cluster0"
     try:
-        mongo_uri = st.secrets["MONGO_URI"]
         client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
         client.admin.command("ping")
         return client
-    except Exception as e:
-        st.error(f"❌ Database connection failed: {e}")
-        st.stop()
+    except:
+        return None
 
 client = init_connection()
 db = client["aqi_db"] if client else None
@@ -69,122 +70,19 @@ if df.empty:
     st.warning("No AQI data available.")
     st.stop()
 
-# ============================== UPLOAD MULTIPLE MODELS ===========================
-uploaded_models = st.sidebar.file_uploader(
-    "Upload your ML models (.pkl or .joblib)", 
-    type=["pkl", "joblib"], 
-    accept_multiple_files=True
-)
+# ============================== LOAD ACTIVE MODEL ===================
+@st.cache_resource
+def load_active_model():
+    if db is None: return None, "Fallback"
+    try:
+        active_meta = db["model_registry"].find_one({"is_active": True}, sort=[("_id", -1)])
+        path = active_meta.get("model_path", "saved_models/Ridge.pkl") if active_meta else "saved_models/Ridge.pkl"
+        name = active_meta.get("model_name", "Ridge") if active_meta else "Ridge"
+        return joblib.load(path), name
+    except:
+        return None, "Fallback"
 
-# Stop if no models uploaded
-if not uploaded_models:
-    st.warning("⚠️ Please upload at least one ML model (.pkl or .joblib) to proceed.")
-    st.stop()
-
-
-# ============================== LOAD MODELS ===========================
-def load_models(files):
-    """
-    Load multiple uploaded ML models and extract features if available.
-    Returns a list of dictionaries: {"model": model_obj, "name": model_name, "features": feature_list}
-    """
-    loaded = []
-    for f in files:
-        try:
-            m = joblib.load(f)
-            features = list(m.feature_names_in_) if hasattr(m, "feature_names_in_") else None
-
-            # Remove extension and normalize for mapping
-            clean_name = f.name.rsplit('.', 1)[0].lower()  # "Ridge.pkl" -> "ridge"
-
-            # Map filenames to proper display names
-            model_name_map = {
-                "random_forest": "Random Forest",
-                "ridge": "Ridge Regression",
-                "xgboost": "XGBoost",
-                "lstm": "LSTM"
-            }
-
-            display_name = model_name_map.get(clean_name, clean_name.title())  # fallback: capitalize
-
-            loaded.append({"model": m, "name": display_name, "features": features})
-        except Exception as e:
-            st.warning(f"Failed to load {f.name}: {e}")
-
-    if not loaded:
-        st.error("No valid models could be loaded. Please upload again.")
-        st.stop()
-
-    return loaded
-
-
-# Load all uploaded models
-models_info = load_models(uploaded_models)
-
-
-# ============================== DETERMINE BEST MODEL ===================
-best_model = None
-best_name = None
-model_name = None
-model_features = None
-
-if db is not None:
-    # Fetch model metrics from DB
-    models_data = list(db["model_registry"].find({}, {"_id": 0}).sort("_id", -1))
-    if models_data:
-        df_models = pd.DataFrame(models_data)
-        df_models.columns = [c.lower() for c in df_models.columns]
-
-        # Expand cv_metrics if available
-        if "cv_metrics" in df_models.columns:
-            all_metrics = set()
-            for metrics_dict in df_models["cv_metrics"]:
-                if isinstance(metrics_dict, dict):
-                    all_metrics.update(metrics_dict.keys())
-            for m in all_metrics:
-                df_models[m.lower()] = df_models["cv_metrics"].apply(
-                    lambda x: x.get(m) if isinstance(x, dict) else np.nan
-                )
-
-        # Pick numeric metrics
-        numeric_metrics = [c for c in df_models.columns if pd.api.types.is_numeric_dtype(df_models[c])]
-        if numeric_metrics:
-            best_metric = "rmse" if "rmse" in numeric_metrics else numeric_metrics[0]
-            best_row = df_models.loc[df_models[best_metric].idxmin()]
-            best_name = best_row["model_name"]
-
-            # Match DB best model with uploaded models
-            for info in models_info:
-                if best_name.lower() in info["name"].lower():
-                    best_model = info["model"]
-                    model_name = info["name"]  # Clean display name
-                    model_features = info["features"] or [
-                        c for c in df.columns if c not in ["time", "month_year", "year", "AQI", "Predicted_AQI"]
-                    ]
-                    break
-
-# Fallback if DB info not available or no match
-if best_model is None:
-    best_model = models_info[0]["model"]
-    best_name = models_info[0]["name"]
-    model_name = models_info[0]["name"]
-    model_features = models_info[0]["features"] or [
-        c for c in df.columns if c not in ["time", "month_year", "year", "AQI", "Predicted_AQI"]
-    ]
-
-st.success(f"✅ Best Model Selected: {model_name}")
-
-
-# ============================== CURRENT AQI PREDICTION ===============
-# Align features safely for prediction
-latest_input = df.iloc[-1].reindex(model_features, fill_value=0.0)
-X_input = pd.DataFrame([latest_input])
-
-try:
-    current_aqi = float(best_model.predict(X_input)[0])
-except Exception as e:
-    st.warning(f"Prediction failed: {e}")
-    current_aqi = 0.0
+model, model_name = load_active_model()
 
 # ============================== UTILITIES ============================
 def aqi_status(aqi):
@@ -195,22 +93,22 @@ def aqi_status(aqi):
     if aqi <= 300: return "🟣 Very Unhealthy"
     return "⚠️ Hazardous"
 
-# # ============================== FEATURE ALIGNMENT ===================
-# if model is not None and hasattr(model, "feature_names_in_"):
-#     model_features = list(model.feature_names_in_)
-# else:
-#     exclude = ["time", "month_year", "year", "AQI", "Predicted_AQI"]
-#     model_features = [c for c in df.columns if c not in exclude]
+# ============================== FEATURE ALIGNMENT ===================
+if model is not None and hasattr(model, "feature_names_in_"):
+    model_features = list(model.feature_names_in_)
+else:
+    exclude = ["time", "month_year", "year", "AQI", "Predicted_AQI"]
+    model_features = [c for c in df.columns if c not in exclude]
 
-# latest = df.iloc[-1]
+latest = df.iloc[-1]
 
-# input_dict = {feat: latest.get(feat, 0.0) for feat in model_features}
-# X_input = pd.DataFrame([input_dict])[model_features]
+input_dict = {feat: latest.get(feat, 0.0) for feat in model_features}
+X_input = pd.DataFrame([input_dict])[model_features]
 
-# try:
-#     current_aqi = float(model.predict(X_input)[0]) if model else 0.0
-# except:
-#     current_aqi = 0.0
+try:
+    current_aqi = float(model.predict(X_input)[0]) if model else 0.0
+except:
+    current_aqi = 0.0
 
 # ============================== CUSTOM SIDEBAR ==========================
 # Hide the default radio label and style buttons
@@ -257,7 +155,6 @@ if "selected_tab" not in st.session_state:
     st.session_state.selected_tab = tabs[0]
 
 selected_tab = st.session_state.selected_tab
-
 
 # ============================== LIVE AQI =============================
 if selected_tab == "🌫️ Live AQI":
@@ -507,12 +404,12 @@ elif selected_tab == "🧪 Model Comparison":
 
     # Info boxes (static)
     cols = st.columns(4)
-    models_info = ["Ridge Regression", "Random Forest", "XGBoost", "LSTM"]
+    models_info = ["Ridge Regression", "Random Forest", "XGBoost", "Prophet"]
     descriptions = [
         "Regularized linear regression model that reduces overfitting.",
         "Ensemble tree-based model that captures nonlinear pollution patterns.",
         "High-performance gradient boosting model optimized for AQI regression.",
-        "Deep learning time-series model capturing long-term AQI dependencies."
+        "Time-series model capturing AQI dependencies."
     ]
     for col, name, desc in zip(cols, models_info, descriptions):
         col.markdown(f"""
@@ -602,51 +499,164 @@ elif selected_tab == "📈 Monthly/Yearly Trend":
 
 # ============================== ABOUT TAB ============================
 elif selected_tab == "ℹ️ About":
+
     st.markdown('<div class="card"><h2>ℹ️ About AirSense Karachi</h2></div>', unsafe_allow_html=True)
 
     st.markdown("""
-        <p style="font-size:20px; line-height:1.5;">
-        AirSense Karachi is an AI-driven Air Quality Intelligence platform designed to monitor,
-        analyze, and predict AQI levels using Machine Learning and Deep Learning techniques.
-        It provides real-time monitoring, forecasting, trend analysis, and model evaluation.
-        </p>
-        """, unsafe_allow_html=True)
+           <p style="font-size:20px; line-height:1.5;">
+           AirSense Karachi is an AI-driven Air Quality Intelligence platform designed to monitor,
+           analyze, and predict AQI levels using Machine Learning and Deep Learning techniques.
+           It provides real-time monitoring, forecasting, trend analysis, and model evaluation.
+           </p>
+           """, unsafe_allow_html=True)
 
     st.markdown("---")
 
     st.markdown("""
-    <p style="font-size:18px;">AI-powered AQI Dashboard for Karachi.</p>
-    <ul>
-    <li>Live AQI prediction based on real-time pollutant data</li>
-    <li>3-Day Forecast powered by predictive modeling</li>
-    <li>Historical AQI trend visualization</li>
-    <li>Model comparison with metrics (MAE, RMSE, R2)</li>
-    <li>Monthly & Yearly AQI trends</li>
-    </ul>
-    """, unsafe_allow_html=True)
+       <p style="font-size:18px;">AI-powered AQI Dashboard for Karachi.</p>
+       <ul>
+       <li>Live AQI prediction based on real-time pollutant data</li>
+       <li>3-Day Forecast powered by predictive modeling</li>
+       <li>Historical AQI trend visualization</li>
+       <li>Model comparison with metrics (MAE, RMSE, R2)</li>
+       <li>Monthly & Yearly AQI trends</li>
+       </ul>
+       """, unsafe_allow_html=True)
 
+    st.markdown("---")
 
+    # ======================= EDA MAIN HEADING =======================
+    st.markdown("<h2 style='color:#0072ff;'>📊 Exploratory Data Analysis (EDA)</h2>", unsafe_allow_html=True)
 
+    # ======================= SHORT EXPLANATION =======================
+    st.markdown("""
+    ### 🔎 Data Understanding
 
+    - **Data Source:** OpenWeather API (real-time pollutant & AQI data)
+    - **Data Cleaning:** Time formatting, sorting, duplicate removal
+    - **Missing Values Handling:** Checked using `.isnull()` and validated dataset consistency
+    - **Outlier Detection:** IQR method + Rolling Z-score method
+    - **Correlation Insights:** Relationship between pollutants and AQI
+    - **Lag & Rolling Features:** Used for capturing temporal AQI patterns
+    """)
 
+    st.markdown("---")
 
+    # ======================= AQI TREND =======================
+    with st.expander("📈 AQI Trend Over Time", expanded=False):
 
+        fig_trend = px.line(df, x="time", y="AQI", title="AQI Time Series Trend")
+        st.plotly_chart(fig_trend, use_container_width=True)
 
+        st.info("Key Insight: AQI shows clear temporal fluctuations indicating seasonal and short-term pollution spikes.")
 
+    # ======================= CORRELATION HEATMAP =======================
+    with st.expander("🔥 Correlation Heatmap (Pollutants vs AQI)", expanded=False):
 
+        selected_cols = ["pm25", "pm10", "no2", "so2", "co", "o3", "AQI"]
+        corr_matrix = df[selected_cols].corr()
 
+        fig_corr = px.imshow(
+            corr_matrix,
+            text_auto=True,
+            color_continuous_scale="RdBu_r",
+            aspect="auto"
+        )
 
+        fig_corr.update_layout(
+            title="Pollutants vs AQI Correlation",
+            dragmode="zoom",  # ✅ enables zoom drag
+        )
 
+        fig_corr.update_xaxes(fixedrange=False)  # ✅ allow zoom on X
+        fig_corr.update_yaxes(fixedrange=False)  # ✅ allow zoom on Y
 
+        st.plotly_chart(
+            fig_corr,
+            use_container_width=True,
+            config={
+                "scrollZoom": True,  # ✅ mouse scroll zoom
+                "displaylogo": False
+            }
+        )
 
+        st.info(
+            "Key Insight: PM2.5 shows strongest positive correlation with AQI, indicating it is the dominant pollutant driver.")
+    # ======================= AQI DISTRIBUTION =======================
+    with st.expander("📊 AQI Distribution Analysis", expanded=False):
 
+        fig_dist = px.histogram(
+            df,
+            x="AQI",
+            nbins=40,
+            opacity=0.85,
+            title="AQI Distribution (Histogram)"
+        )
 
+        # Add outline to bars
+        fig_dist.update_traces(
+            marker_line_width=1.5,
+            marker_line_color="black"
+        )
 
+        fig_dist.update_layout(
+            xaxis_title="AQI Value",
+            yaxis_title="Frequency"
+        )
 
+        st.plotly_chart(fig_dist, use_container_width=True)
 
+        st.info("Key Insight: AQI values are concentrated in moderate ranges with fewer extreme high-pollution events.")
 
+    # ======================= AQI OUTLIER DETECTION (IQR) =======================
+    with st.expander("🚨 AQI Outlier Detection (IQR Method)", expanded=False):
 
+        fig_box = px.box(
+            df,
+            y="AQI",
+            points="outliers",  # shows detected outliers
+            title="AQI Boxplot with IQR Outliers"
+        )
 
+        fig_box.update_layout(
+            yaxis_title="AQI Value"
+        )
 
+        st.plotly_chart(
+            fig_box,
+            use_container_width=True,
+            config={"scrollZoom": True}
+        )
 
+        st.info(
+            "Key Insight: Boxplot highlights extreme AQI spikes beyond the normal interquartile range, indicating pollution anomalies.")
+    # ======================= MONTHLY TREND =======================
+    with st.expander("📅 Monthly AQI Trend with 3-Month Moving Average", expanded=False):
 
+        # Extract year-month
+        df["year_month"] = df["time"].dt.to_period("M")
+
+        # Compute monthly mean AQI
+        monthly_trend = df.groupby("year_month")["AQI"].mean().reset_index()
+        monthly_trend["AQI_3MA"] = monthly_trend["AQI"].rolling(3).mean()
+
+        monthly_trend["year_month"] = monthly_trend["year_month"].astype(str)
+
+        fig_month = px.line(
+            monthly_trend,
+            x="year_month",
+            y=["AQI", "AQI_3MA"],
+            markers=True,
+            title="Monthly AQI Trend with 3-Month Moving Average"
+        )
+
+        fig_month.update_layout(
+            xaxis_title="Month",
+            yaxis_title="AQI",
+            xaxis_tickangle=45
+        )
+
+        st.plotly_chart(fig_month, use_container_width=True)
+
+        st.info(
+            "Key Insight: The 3-month moving average smooths short-term fluctuations and reveals the underlying long-term AQI trend.")
