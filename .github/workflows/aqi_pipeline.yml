@@ -2,9 +2,8 @@ name: AQI Production Pipeline
 
 on:
   schedule:
-    - cron: "0 */3 * * *"
-    - cron: "15 * * * *"
-    - cron: "0 2 * * *"
+    - cron: "15 * * * *"     # Every hour at minute 15 → Hourly pipeline
+    - cron: "0 2 * * *"      # Daily at 02:00 UTC → Training pipeline
 
   workflow_dispatch:
     inputs:
@@ -37,20 +36,13 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Cache pip
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install --upgrade setuptools wheel
           pip install -r requirements.txt
 
+      # 🔥 Determine step based ONLY on event + hour (robust)
       - name: Determine Step
         id: determine
         run: |
@@ -58,12 +50,9 @@ jobs:
             STEP="${{ github.event.inputs.step }}"
           else
             HOUR=$(date -u +%H)
-            MINUTE=$(date -u +%M)
 
-            if [[ $HOUR == "02" && $MINUTE == "00" ]]; then
+            if [[ "$HOUR" == "02" ]]; then
               STEP="train"
-            elif [[ $MINUTE == "00" ]]; then
-              STEP="fetch"
             else
               STEP="features"
             fi
@@ -71,34 +60,30 @@ jobs:
 
           echo "step=$STEP" >> $GITHUB_OUTPUT
           echo "Selected Step: $STEP"
+          echo "UTC Time: $(date -u)"
 
+      # Hourly → Fetch
       - name: Run Data Fetch
-        if: steps.determine.outputs.step == 'fetch' || steps.determine.outputs.step == 'full'
+        if: steps.determine.outputs.step == 'features' || steps.determine.outputs.step == 'full'
         run: python ./Fetch_raw_data.py
 
+      # Hourly → Feature Engineering
       - name: Run Feature Pipeline
         if: steps.determine.outputs.step == 'features' || steps.determine.outputs.step == 'full'
         run: python ./feature_pipeline.py
 
+      # Daily → Training
       - name: Run Training Pipeline
         if: steps.determine.outputs.step == 'train' || steps.determine.outputs.step == 'full'
         run: python ./training_pipeline.py
 
-      # ✅ Upload only if training executed
+      # Upload model only if training ran
       - name: Upload Best Model Artifact
         if: steps.determine.outputs.step == 'train' || steps.determine.outputs.step == 'full'
         uses: actions/upload-artifact@v4
         with:
           name: best-model
           path: models/
-
-      - name: Check Model Files
-        run: |
-          if [ -d "models" ]; then
-            ls -lah models
-          else
-            echo "No models folder found"
-          fi
 
       - name: Summary
         run: |
