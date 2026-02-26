@@ -39,7 +39,7 @@ Air pollution is a serious environmental and health issue in metropolitan cities
 
 * Scikit-learn
 * XGBoost
-* TensorFlow / Keras (LSTM)
+
 
 **Database**
 
@@ -119,7 +119,7 @@ The AQI Intelligence Platform follows a **three-layer architecture** with an end
           ▼
 ┌────────────────────────┐
 │  Model Training Layer  │
-│ Ridge | RF | XGB |LSTM │                  
+│ Ridge |RF |XGB |Prophet│                  
 └─────────┬──────────────┘
           │
           ▼
@@ -192,7 +192,7 @@ The AQI Intelligence Platform follows a **three-layer architecture** with an end
 | **Ridge**     | 6.68    | 9.312   | 0.97     |
 | Random Forest | 14      | 22.57   | 0.86     |
 | XGBoost       | 14      | 21.59   | 0.86     |
-| LSTM          | 22      | 31      | 0.74     |
+| Prophet         | 22      | 31      | 0.74     |
 
 **Best Model:** **Ridge**
 
